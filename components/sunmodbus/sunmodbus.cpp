@@ -44,7 +44,7 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
   (void) count;
   (void) buffer;
   (void) len;
-  // Stub - implementer rigtig Modbus senere. For nu returnerer vi false for at undgå crash.
+
   ESP_LOGW(TAG, "read_holding_registers_ stub called - not implemented");
   return false;
 }
