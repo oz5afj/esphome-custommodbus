@@ -11,7 +11,7 @@ CONFIG_SCHEMA = (
         {
             cv.GenerateID(): cv.declare_id(CustomModbus),
             cv.Optional("name", default="Modbus Test Value"): cv.string,
-            cv.Optional("sensor"): sensor.sensor_schema(unit_of_measurement=None),
+            cv.Required("sensor"): sensor.sensor_schema(),
         }
     )
     .extend(uart.UART_DEVICE_SCHEMA)
@@ -23,10 +23,7 @@ async def to_code(config):
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
-    if "name" in config:
-        cg.add(var.set_name(config["name"]))
+    cg.add(var.set_name(config["name"]))
 
-    if "sensor" in config:
-        sens = await sensor.new_sensor(config["sensor"])
-        cg.add(var.set_sensor(sens))
-
+    sens = await sensor.new_sensor(config["sensor"])
+    cg.add(var.set_sensor(sens))
