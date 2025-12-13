@@ -26,6 +26,7 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
 
   // ✅ DEN VIGTIGE RETTELSE
   void set_update_interval(uint32_t ms) { this->PollingComponent::set_update_interval(ms); }
+  void set_sensor(sensor::Sensor *s) { this->sensor_ = s; }
 
   void set_offset(uint16_t offset) { this->offset_ = offset; }
   void set_type(DataType type) { this->type_ = type; }
@@ -47,3 +48,4 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
 
 }  // namespace sunmodbus
 }  // namespace esphome
+
