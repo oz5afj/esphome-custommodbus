@@ -1,9 +1,9 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart, sensor
-from esphome.const import CONF_ID, CONF_NAME, CONF_UART_ID
 
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
+
 CustomModbusBlock = custommodbus_ns.class_("CustomModbusBlock", cg.Component, uart.UARTDevice)
 
 DataType = custommodbus_ns.enum("DataType")
