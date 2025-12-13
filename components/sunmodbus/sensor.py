@@ -27,7 +27,11 @@ DATA_TYPE_ENUM = cv.enum({
     "int16": DataType.TYPE_INT16,
 }, upper=False)
 
-CONFIG_SCHEMA = sensor.sensor_schema(SunModbus).extend({
+CONFIG_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.declare_id(SunModbus),
+
+    cv.Required(CONF_NAME): cv.string,
+
     cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
     cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
     cv.Required(CONF_START_ADDRESS): cv.int_range(min=0, max=65535),
@@ -42,7 +46,12 @@ CONFIG_SCHEMA = sensor.sensor_schema(SunModbus).extend({
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
-    await sensor.register_sensor(var, config)
+
+    # Opret sensoren manuelt
+    sens = await sensor.new_sensor({
+        CONF_NAME: config[CONF_NAME]
+    })
+    cg.add(var.set_sensor(sens))
 
     uart_comp = await cg.get_variable(config[CONF_UART_ID])
     cg.add(var.set_uart(uart_comp))
