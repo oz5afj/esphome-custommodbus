@@ -43,9 +43,10 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    # set update interval on component (ms)
-    update_ms = int(config.get(CONF_UPDATE_INTERVAL))
-    cg.add(var.set_update_interval(update_ms))
+  
+    # set update interval on component (TimePeriodMilliseconds accepted)
+    cg.add(var.set_update_interval(config[CONF_UPDATE_INTERVAL]))
+
 
     sens = await sensor.new_sensor(config[CONF_SENSOR])
     cg.add(var.set_sensor(sens))
