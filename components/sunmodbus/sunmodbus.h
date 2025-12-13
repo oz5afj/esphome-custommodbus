@@ -23,6 +23,9 @@ class SunModbus : public Component, public uart::UARTDevice {
   void set_start_address(uint16_t addr) { this->start_address_ = addr; }
   void set_count(uint16_t c) { this->count_ = c; }
   void set_update_interval(uint32_t ms) { this->update_interval_ = ms; }
+  void set_offset(uint16_t offset) { offset_ = offset; }
+  void set_type(DataType type) { type_ = type; }
+  void set_scale(float scale) { scale_ = scale; }
 
   void add_sensor(sensor::Sensor *sens, uint16_t offset, DataType type, float scale);
 
@@ -42,3 +45,4 @@ class SunModbus : public Component, public uart::UARTDevice {
 
 }  // namespace sunmodbus
 }  // namespace esphome
+
