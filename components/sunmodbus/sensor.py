@@ -3,10 +3,10 @@ import esphome.config_validation as cv
 from esphome.components import uart, sensor
 from esphome.const import CONF_ID, CONF_NAME, CONF_UART_ID
 
-custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
-CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
+sunmodbus_ns = cg.esphome_ns.namespace("sunmodbus")
+SunModbus = sunmodbus_ns.class_("SunModbus", cg.Component, uart.UARTDevice)
 
-DataType = custommodbus_ns.enum("DataType")
+DataType = sunmodbus_ns.enum("DataType")
 
 DEPENDENCIES = ["uart"]
 
@@ -24,7 +24,7 @@ DATA_TYPE_ENUM = cv.enum({
 }, upper=False)
 
 CONFIG_SCHEMA = sensor.sensor_schema().extend({
-    cv.GenerateID(): cv.declare_id(CustomModbus),
+    cv.GenerateID(): cv.declare_id(SunModbus),
     cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
     cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
     cv.Required(CONF_START_ADDRESS): cv.int_range(min=0, max=65535),
