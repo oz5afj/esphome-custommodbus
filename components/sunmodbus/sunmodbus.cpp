@@ -25,26 +25,29 @@ void SunModbus::setup() {
 }
 
 void SunModbus::update() {
+  uint32_t t0 = millis();
+  ESP_LOGD(TAG, "update() start");
+
   if (this->uart_ == nullptr || this->sensor_ == nullptr) {
     ESP_LOGW(TAG, "UART or sensor not set");
+    ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
     return;
   }
 
-  // buffer for response: max registers * 2 + 5 (addr, func, bytecount, crc)
   uint8_t resp[256] = {0};
 
   if (!this->read_holding_registers_(this->slave_id_, this->start_address_, this->count_, resp, sizeof(resp))) {
     ESP_LOGW(TAG, "Failed to read holding registers");
+    ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
     return;
   }
 
-  // ensure at least two bytes of data
   if (this->count_ < 1) {
     ESP_LOGW(TAG, "No registers read");
+    ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
     return;
   }
 
-  // Use first register for single sensor publish (expand later if needed)
   uint16_t raw = (resp[0] << 8) | resp[1];
   float value = 0.0f;
 
@@ -57,9 +60,14 @@ void SunModbus::update() {
 
   value = (value + this->offset_) * this->scale_;
   this->sensor_->publish_state(value);
+
+  ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
 }
 
 bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t count, uint8_t *buffer, uint16_t len) {
+  uint32_t t0 = millis();
+  ESP_LOGD(TAG, "read_holding_registers_ start slave=%u start=%u count=%u", slave, start, count);
+
   if (count == 0 || count > 125) {
     ESP_LOGW(TAG, "Invalid count %u", count);
     return false;
@@ -89,9 +97,8 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
   // Send request
   this->write_array(req, 8);
 
-  // Wait for response: slave + func + bytecount + data + crc(2)
-  // We'll read bytes with a small timeout loop to collect expected_response_len
-  uint32_t timeout_ms = 300;
+  // Non-blocking-ish read loop with short timeout and small yields
+  uint32_t timeout_ms = 120; // short timeout to avoid blocking main loop
   uint32_t start_ms = millis();
   uint16_t idx = 0;
   while ((millis() - start_ms) < timeout_ms && idx < expected_response_len) {
@@ -101,39 +108,44 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
       int r = this->read_array(buffer + idx, to_read);
       if (r > 0) idx += r;
     } else {
-      delay(5);
+      delay(0); // yield
     }
   }
 
   if (idx < 5) {
-    ESP_LOGW(TAG, "Response too short: %u bytes", idx);
+    ESP_LOGW(TAG, "Response too short: %u bytes (timeout %u ms)", idx, timeout_ms);
+    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
     return false;
   }
 
-  // Validate CRC
+  // Validate CRC (last two bytes)
   uint16_t resp_crc = (uint16_t)buffer[idx - 2] | ((uint16_t)buffer[idx - 1] << 8);
   if (crc16_modbus(buffer, idx - 2) != resp_crc) {
     ESP_LOGW(TAG, "CRC mismatch");
+    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
     return false;
   }
 
-  // Check function code and byte count
+  // Check for exception
   if (buffer[1] & 0x80) {
     ESP_LOGW(TAG, "Modbus exception code: %u", buffer[2]);
+    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
     return false;
   }
+
   uint8_t bytecount = buffer[2];
-  if (bytecount != expected_data_bytes) {
-    ESP_LOGW(TAG, "Unexpected bytecount %u (expected %u)", bytecount, expected_data_bytes);
-    // still copy what we have up to min(bytecount, expected_data_bytes)
+  if (bytecount == 0) {
+    ESP_LOGW(TAG, "Zero bytecount in response");
+    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
+    return false;
   }
 
-  // Copy data portion to start of buffer for caller convenience
   uint16_t copy_len = std::min<uint16_t>(bytecount, expected_data_bytes);
   for (uint16_t i = 0; i < copy_len; ++i) {
     buffer[i] = buffer[3 + i];
   }
 
+  ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
   return true;
 }
 
