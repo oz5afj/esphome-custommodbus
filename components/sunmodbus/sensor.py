@@ -1,7 +1,11 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart, sensor
-from esphome.const import CONF_ID, CONF_NAME, CONF_UART_ID
+from esphome.const import (
+    CONF_ID,
+    CONF_NAME,
+    CONF_UART_ID,
+)
 
 sunmodbus_ns = cg.esphome_ns.namespace("sunmodbus")
 SunModbus = sunmodbus_ns.class_("SunModbus", cg.Component, uart.UARTDevice)
@@ -23,9 +27,11 @@ DATA_TYPE_ENUM = cv.enum({
     "int16": DataType.TYPE_INT16,
 }, upper=False)
 
-
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(SunModbus),
+
+    cv.Required(CONF_NAME): cv.string,
+
     cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
     cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
     cv.Required(CONF_START_ADDRESS): cv.int_range(min=0, max=65535),
@@ -48,8 +54,10 @@ async def to_code(config):
     cg.add(var.set_count(config[CONF_COUNT]))
     cg.add(var.set_update_interval(config[CONF_UPDATE_INTERVAL]))
 
+    # ✅ Opret sensoren med navn
     sens = await sensor.new_sensor(config, name=config[CONF_NAME])
 
+    # ✅ Tilføj sensoren til C++ objektet
     cg.add(var.add_sensor(
         sens,
         config[CONF_OFFSET],
