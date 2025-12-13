@@ -1,1 +1,1 @@
-from . import sensor_block
+from . import sensor
