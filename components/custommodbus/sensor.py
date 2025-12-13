@@ -1,24 +1,31 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import uart
-from esphome.const import CONF_ID, CONF_NAME
-
-DEPENDENCIES = ["uart"]
+from esphome.components import uart, sensor
+from esphome import core
 
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
-CONFIG_SCHEMA = cv.Schema({
-    cv.GenerateID(): cv.declare_id(CustomModbus),
-    cv.Required("uart_id"): cv.use_id(uart.UARTComponent),
-    cv.Required(CONF_NAME): cv.string,
-})
+CONFIG_SCHEMA = (
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(CustomModbus),
+            cv.Optional("name", default="Modbus Test Value"): cv.string,
+            cv.Optional("sensor"): sensor.sensor_schema(unit_of_measurement=None),
+        }
+    )
+    .extend(uart.UART_DEVICE_SCHEMA)
+    .extend(cv.COMPONENT_SCHEMA)
+)
 
 async def to_code(config):
-    uart_component = await cg.get_variable(config["uart_id"])
-    var = cg.new_Pvariable(config[CONF_ID], uart_component)
-
-    cg.add(var.set_name(config[CONF_NAME]))
-
+    var = cg.new_Pvariable(config[core.CONF_ID])
     await cg.register_component(var, config)
+    await uart.register_uart_device(var, config)
 
+    if "name" in config:
+        cg.add(var.set_name(config["name"]))
+
+    if "sensor" in config:
+        sens = await sensor.new_sensor(config["sensor"])
+        cg.add(var.set_sensor(sens))
