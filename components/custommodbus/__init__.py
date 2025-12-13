@@ -1,4 +1,2 @@
-import esphome.codegen as cg
-
-cg.register_component("custommodbus", "sensor")
+from . import sensor
 
