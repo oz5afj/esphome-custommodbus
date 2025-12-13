@@ -23,7 +23,8 @@ DATA_TYPE_ENUM = cv.enum({
     "int16": DataType.TYPE_INT16,
 }, upper=False)
 
-CONFIG_SCHEMA = sensor.sensor_schema().extend({
+
+CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(SunModbus),
     cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
     cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
