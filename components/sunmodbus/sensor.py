@@ -48,7 +48,8 @@ async def to_code(config):
     cg.add(var.set_count(config[CONF_COUNT]))
     cg.add(var.set_update_interval(config[CONF_UPDATE_INTERVAL]))
 
-    sens = await sensor.new_sensor(config)
+    sens = await sensor.new_sensor(config, name=config[CONF_NAME])
+
     cg.add(var.add_sensor(
         sens,
         config[CONF_OFFSET],
