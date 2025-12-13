@@ -15,6 +15,7 @@ enum DataType {
 class SunModbus : public PollingComponent, public uart::UARTDevice {
  public:
   SunModbus() = default;
+  explicit SunModbus(uint32_t update_interval_ms) : PollingComponent(update_interval_ms) {}
 
   void set_uart(uart::UARTComponent *uart) { this->uart_ = uart; }
   void set_sensor(sensor::Sensor *sensor) { this->sensor_ = sensor; }
@@ -26,7 +27,6 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
   void set_scale(float scale) { this->scale_ = scale; }
   void set_type(DataType type) { this->type_ = type; }
 
-  // ✅ KORREKT måde i 2025.11.x
   void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
 
   void setup() override;
