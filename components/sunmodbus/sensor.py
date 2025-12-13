@@ -8,7 +8,7 @@ from esphome.const import (
 )
 
 sunmodbus_ns = cg.esphome_ns.namespace("sunmodbus")
-SunModbus = sunmodbus_ns.class_("SunModbus", cg.Component, uart.UARTDevice)
+SunModbus = sunmodbus_ns.class_("SunModbus", cg.PollingComponent, uart.UARTDevice)
 
 DataType = sunmodbus_ns.enum("DataType")
 
