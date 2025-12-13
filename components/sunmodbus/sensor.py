@@ -1,11 +1,11 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+
 from esphome.components import uart, sensor
 from esphome.const import CONF_ID, CONF_UART_ID
 
 sunmodbus_ns = cg.esphome_ns.namespace("sunmodbus")
 SunModbus = sunmodbus_ns.class_("SunModbus", cg.PollingComponent, uart.UARTDevice)
-
 DataType = sunmodbus_ns.enum("DataType")
 
 DEPENDENCIES = ["uart"]
@@ -16,42 +16,42 @@ CONF_COUNT = "count"
 CONF_OFFSET = "offset"
 CONF_SCALE = "scale"
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_SENSOR = "sensor"
+CONF_MODBUS_TYPE = "modbus_type"  # <- ren string, ikke enum
 
-# ✅ Intern nøgle – ESPHome genererer IKKE C++ kode for denne
-CONF_INTERNAL_TYPE = "_internal_type"
+CONFIG_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(): cv.declare_id(SunModbus),
 
-CONFIG_SCHEMA = cv.Schema({
-    cv.GenerateID(): cv.declare_id(SunModbus),
+        cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
+        cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
+        cv.Required(CONF_START_ADDRESS): cv.int_range(min=0, max=65535),
+        cv.Required(CONF_COUNT): cv.int_range(min=1, max=125),
+        cv.Required(CONF_OFFSET): cv.int_range(min=0, max=255),
+        cv.Required(CONF_SCALE): cv.float_,
 
-    cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
-    cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
-    cv.Required(CONF_START_ADDRESS): cv.int_range(min=0, max=65535),
-    cv.Required(CONF_COUNT): cv.int_range(min=1, max=125),
-    cv.Required(CONF_OFFSET): cv.int_range(min=0, max=255),
-    cv.Required(CONF_SCALE): cv.float_,
+        # <- vigtig pointe: ren string, ESPHome aner intet om DataType her
+        cv.Required(CONF_MODBUS_TYPE): cv.one_of("uint16", "int16"),
 
-    # ✅ type er nu en intern værdi, ESPHome rører den ikke
-    cv.Required(CONF_INTERNAL_TYPE): cv.one_of("uint16", "int16"),
-
-    cv.Optional(CONF_UPDATE_INTERVAL, default="1s"): cv.positive_time_period_milliseconds,
-
-    cv.Required("sensor"): sensor.sensor_schema(),
-}).extend(cv.COMPONENT_SCHEMA)
+        cv.Optional(CONF_UPDATE_INTERVAL, default="1s"): cv.positive_time_period_milliseconds,
+        cv.Required(CONF_SENSOR): sensor.sensor_schema(),
+    }
+).extend(cv.COMPONENT_SCHEMA)
 
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    # ✅ opret ESPHome-sensoren korrekt
-    sens = await sensor.new_sensor(config["sensor"])
+    # Opret underliggende ESPHome-sensor
+    sens = await sensor.new_sensor(config[CONF_SENSOR])
     cg.add(var.set_sensor(sens))
 
-    # ✅ UART
+    # UART binding
     uart_comp = await cg.get_variable(config[CONF_UART_ID])
     cg.add(var.set_uart(uart_comp))
 
-    # ✅ simple værdier
+    # Simple værdier
     cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(var.set_start_address(config[CONF_START_ADDRESS]))
     cg.add(var.set_count(config[CONF_COUNT]))
@@ -59,8 +59,8 @@ async def to_code(config):
     cg.add(var.set_offset(config[CONF_OFFSET]))
     cg.add(var.set_scale(config[CONF_SCALE]))
 
-    # ✅ type mapping – ESPHome genererer INGEN kode for dette
-    t = config[CONF_INTERNAL_TYPE]
+    # Type-mapping: gjort 100% manuelt, ESPHome genererer INGEN kode for dette
+    t = config[CONF_MODBUS_TYPE]
     if t == "uint16":
         cg.add(var.set_type(DataType.TYPE_UINT16))
     else:
