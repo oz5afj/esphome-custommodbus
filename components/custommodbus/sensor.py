@@ -3,20 +3,13 @@ import esphome.config_validation as cv
 from esphome.components import uart, sensor
 from esphome.const import CONF_ID, CONF_NAME, CONF_UART_ID
 
-# Namespace for C++ klasserne
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
-CustomModbusBlock = custommodbus_ns.class_("CustomModbusBlock", cg.Component, uart.UARTDevice)
+CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
 DataType = custommodbus_ns.enum("DataType")
 
-# Platformnavn
-PLATFORM = "custommodbus_block"
-
-# Dependencies
 DEPENDENCIES = ["uart"]
-AUTO_LOAD = ["custommodbus"]
 
-# Konfigurationsfelter
 CONF_SLAVE_ID = "slave_id"
 CONF_START_ADDRESS = "start_address"
 CONF_COUNT = "count"
@@ -30,9 +23,8 @@ DATA_TYPE_ENUM = cv.enum({
     "int16": DataType.TYPE_INT16,
 }, upper=False)
 
-# Sensor-platform schema
 CONFIG_SCHEMA = sensor.sensor_schema().extend({
-    cv.GenerateID(): cv.declare_id(CustomModbusBlock),
+    cv.GenerateID(): cv.declare_id(CustomModbus),
     cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
     cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
     cv.Required(CONF_START_ADDRESS): cv.int_range(min=0, max=65535),
@@ -62,6 +54,3 @@ async def to_code(config):
         config[CONF_TYPE],
         config[CONF_SCALE],
     ))
-
-
-CODEOWNERS = ["@oz5afj"]
