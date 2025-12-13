@@ -6,12 +6,21 @@ from esphome import core
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
+DATA_TYPES = {
+    "uint16": cg.uint16,
+    "int16": cg.int16,
+}
+
 CONFIG_SCHEMA = (
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(CustomModbus),
-            cv.Optional("name", default="Modbus Test Value"): cv.string,
-            cv.Required("sensor"): sensor.sensor_schema(),
+            cv.Required("slave_id"): cv.int_range(min=1, max=247),
+            cv.Required("register"): cv.hex_uint16_t,
+            cv.Optional("count", default=1): cv.int_range(min=1, max=2),
+            cv.Optional("data_type", default="uint16"): cv.one_of(*DATA_TYPES.keys(), lower=True),
+            cv.Optional("scale", default=1.0): cv.float_,
+            cv.Required("name"): cv.string,
         }
     )
     .extend(uart.UART_DEVICE_SCHEMA)
@@ -23,7 +32,11 @@ async def to_code(config):
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
-    cg.add(var.set_name(config["name"]))
+    cg.add(var.set_slave_id(config["slave_id"]))
+    cg.add(var.set_register(config["register"]))
+    cg.add(var.set_count(config["count"]))
+    cg.add(var.set_data_type(DATA_TYPES[config["data_type"]]))
+    cg.add(var.set_scale(config["scale"]))
 
-    sens = await sensor.new_sensor(config["sensor"])
+    sens = await sensor.new_sensor(config)
     cg.add(var.set_sensor(sens))
