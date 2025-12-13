@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart, sensor
-from esphome.const import CONF_ID, CONF_UART_ID, CONF_NAME
+from esphome.const import CONF_ID, CONF_UART_ID
 
 sunmodbus_ns = cg.esphome_ns.namespace("sunmodbus")
 SunModbus = sunmodbus_ns.class_("SunModbus", cg.PollingComponent, uart.UARTDevice)
@@ -15,9 +15,10 @@ CONF_START_ADDRESS = "start_address"
 CONF_COUNT = "count"
 CONF_OFFSET = "offset"
 CONF_SCALE = "scale"
-CONF_TYPE = "type"
 CONF_UPDATE_INTERVAL = "update_interval"
-CONF_SENSOR = "sensor"
+
+# ✅ Intern nøgle – ESPHome genererer IKKE C++ kode for denne
+CONF_INTERNAL_TYPE = "_internal_type"
 
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(SunModbus),
@@ -29,13 +30,12 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_OFFSET): cv.int_range(min=0, max=255),
     cv.Required(CONF_SCALE): cv.float_,
 
-    # ✅ type er nu en ren string, så ESPHome IKKE genererer C++ kode i main.cpp
-    cv.Required(CONF_TYPE): cv.one_of("uint16", "int16"),
+    # ✅ type er nu en intern værdi, ESPHome rører den ikke
+    cv.Required(CONF_INTERNAL_TYPE): cv.one_of("uint16", "int16"),
 
     cv.Optional(CONF_UPDATE_INTERVAL, default="1s"): cv.positive_time_period_milliseconds,
 
-    # ✅ indlejret sensor-schema
-    cv.Required(CONF_SENSOR): sensor.sensor_schema(),
+    cv.Required("sensor"): sensor.sensor_schema(),
 }).extend(cv.COMPONENT_SCHEMA)
 
 
@@ -44,7 +44,7 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     # ✅ opret ESPHome-sensoren korrekt
-    sens = await sensor.new_sensor(config[CONF_SENSOR])
+    sens = await sensor.new_sensor(config["sensor"])
     cg.add(var.set_sensor(sens))
 
     # ✅ UART
@@ -59,8 +59,9 @@ async def to_code(config):
     cg.add(var.set_offset(config[CONF_OFFSET]))
     cg.add(var.set_scale(config[CONF_SCALE]))
 
-    # ✅ type mapping — ESPHome skal IKKE generere C++ kode for dette
-    if config[CONF_TYPE] == "uint16":
+    # ✅ type mapping – ESPHome genererer INGEN kode for dette
+    t = config[CONF_INTERNAL_TYPE]
+    if t == "uint16":
         cg.add(var.set_type(DataType.TYPE_UINT16))
     else:
         cg.add(var.set_type(DataType.TYPE_INT16))
