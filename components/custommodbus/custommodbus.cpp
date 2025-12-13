@@ -1,36 +1,50 @@
 #include "custommodbus.h"
+#include "esphome/core/log.h"
 
 namespace custommodbus {
 
-CustomModbus::CustomModbus(esphome::UARTComponent *parent)
-    : UARTDevice(parent) {}
+static const char *const TAG = "custommodbus";
 
 void CustomModbus::setup() {
-  // Ingen speciel init
+  ESP_LOGI(TAG, "CustomModbus setup");
 }
 
 void CustomModbus::loop() {
   static uint32_t last = 0;
-  if (millis() - last < 1000) return;
-  last = millis();
+  uint32_t now = esphome::millis();
+
+  if (now - last < 1000)
+    return;
+  last = now;
+
+  if (this->sensor_ == nullptr) {
+    ESP_LOGW(TAG, "No sensor attached, skipping Modbus request");
+    return;
+  }
 
   uint8_t frame[8] = {1, 3, 0, 0x10, 0, 1};
   uint16_t crc = crc16(frame, 6);
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-  write_array(frame, 8);
-  flush();
-  delay(20);
+  // UARTDevice-metoder skal kaldes via this->
+  this->write_array(frame, 8);
+  this->flush();
+  esphome::delay(20);
 
   uint8_t resp[7];
-  if (available() >= 7) {
-    read_array(resp, 7);
+  if (this->available() >= 7) {
+    this->read_array(resp, 7);
 
     if (resp[0] == 1 && resp[1] == 3 && resp[2] == 2) {
-      uint16_t raw = (resp[3] << 8) | resp[4];
-      sensor_->publish_state(raw);
+      uint16_t raw = (uint16_t(resp[3]) << 8) | uint16_t(resp[4]);
+      ESP_LOGD(TAG, "Received raw value: %u", raw);
+      this->sensor_->publish_state(raw);
+    } else {
+      ESP_LOGW(TAG, "Unexpected Modbus response");
     }
+  } else {
+    ESP_LOGW(TAG, "Not enough data available on UART");
   }
 }
 
