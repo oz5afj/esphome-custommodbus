@@ -7,8 +7,8 @@ custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
 DATA_TYPES = {
-    "uint16": cg.uint16,
-    "int16": cg.int16,
+    "uint16": 0,
+    "int16": 1,
 }
 
 CONFIG_SCHEMA = (
