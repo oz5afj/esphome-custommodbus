@@ -26,7 +26,8 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
   void set_scale(float scale) { this->scale_ = scale; }
   void set_type(DataType type) { this->type_ = type; }
 
-  void set_update_interval(uint32_t update_interval) { this->set_update_interval_ms(update_interval); }
+  // ✅ KORREKT måde i 2025.11.x
+  void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
 
   void setup() override;
   void update() override;
@@ -42,6 +43,8 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
   uint16_t offset_{0};
   float scale_{1.0f};
   DataType type_{TYPE_UINT16};
+
+  uint32_t update_interval_{1000};
 
   bool read_holding_registers_(uint8_t slave, uint16_t start, uint16_t count, uint8_t *buffer, uint16_t len);
 };
