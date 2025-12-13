@@ -34,21 +34,24 @@ void SunModbus::update() {
     return;
   }
 
-  uint8_t resp[256] = {0};
+  // Begræns buffer til en sikker størrelse (64 bytes)
+  uint8_t resp_buf[64] = {0};
 
-  if (!this->read_holding_registers_(this->slave_id_, this->start_address_, this->count_, resp, sizeof(resp))) {
+  // Læs maks 30 registre (60 bytes) eller count_ hvis mindre
+  uint16_t safe_count = std::min<uint16_t>(this->count_, 30);
+  if (!this->read_holding_registers_(this->slave_id_, this->start_address_, safe_count, resp_buf, sizeof(resp_buf))) {
     ESP_LOGW(TAG, "Failed to read holding registers");
     ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
     return;
   }
 
-  if (this->count_ < 1) {
+  if (safe_count < 1) {
     ESP_LOGW(TAG, "No registers read");
     ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
     return;
   }
 
-  uint16_t raw = (resp[0] << 8) | resp[1];
+  uint16_t raw = (resp_buf[0] << 8) | resp_buf[1];
   float value = 0.0f;
 
   if (this->type_ == TYPE_UINT16) {
@@ -72,7 +75,10 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
     ESP_LOGW(TAG, "Invalid count %u", count);
     return false;
   }
-  uint16_t expected_data_bytes = count * 2;
+
+  // Sikker cap: maks 30 registre (60 bytes)
+  uint16_t safe_count = std::min<uint16_t>(count, 30);
+  uint16_t expected_data_bytes = safe_count * 2;
   uint16_t expected_response_len = 5 + expected_data_bytes; // addr + func + bytecount + data + crc(2)
 
   if (len < expected_data_bytes) {
@@ -85,8 +91,8 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
   req[1] = 0x03; // Read Holding Registers
   req[2] = (start >> 8) & 0xFF;
   req[3] = start & 0xFF;
-  req[4] = (count >> 8) & 0xFF;
-  req[5] = count & 0xFF;
+  req[4] = (safe_count >> 8) & 0xFF;
+  req[5] = safe_count & 0xFF;
   uint16_t crc = crc16_modbus(req, 6);
   req[6] = crc & 0xFF;
   req[7] = (crc >> 8) & 0xFF;
@@ -97,8 +103,8 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
   // Send request
   this->write_array(req, 8);
 
-  // Non-blocking-ish read loop with short timeout and small yields
-  uint32_t timeout_ms = 120; // short timeout to avoid blocking main loop
+  // Kort timeout og ikke-blokerende loop
+  uint32_t timeout_ms = 100; // kort timeout for at undgå blokering
   uint32_t start_ms = millis();
   uint16_t idx = 0;
   while ((millis() - start_ms) < timeout_ms && idx < expected_response_len) {
