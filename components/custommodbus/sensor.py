@@ -19,7 +19,7 @@ CONFIG_SCHEMA = (
 )
 
 async def to_code(config):
-    var = cg.new_Pvariable(config[core.CONF_ID])
+    var = cg.new_Pvariable(config["id"])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
@@ -29,3 +29,4 @@ async def to_code(config):
     if "sensor" in config:
         sens = await sensor.new_sensor(config["sensor"])
         cg.add(var.set_sensor(sens))
+
