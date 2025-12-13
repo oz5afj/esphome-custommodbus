@@ -47,10 +47,9 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    # Opret sensoren manuelt
-    sens = await sensor.new_sensor({
-        CONF_NAME: config[CONF_NAME]
-    })
+    # ✅ Opret sensor-objektet direkte
+    sens = cg.new_Pvariable(cg.generate_id(), sensor.Sensor)
+    cg.add(sens.set_name(config[CONF_NAME]))
     cg.add(var.set_sensor(sens))
 
     uart_comp = await cg.get_variable(config[CONF_UART_ID])
