@@ -27,7 +27,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
         cv.Required(CONF_START_ADDRESS): cv.int_range(min=0, max=65535),
         cv.Required(CONF_COUNT): cv.int_range(min=1, max=125),
-        cv.Required(CONF_OFFSET): cv.int_range(min=0, max=255),
+        cv.Required(CONF_OFFSET): cv.int_range(min=0, max=65535),
         cv.Required(CONF_SCALE): cv.float_,
 
         cv.Required(CONF_INTERNAL_TYPE): cv.one_of("uint16", "int16"),
@@ -43,6 +43,10 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
+    # set update interval on component (ms)
+    update_ms = int(config.get(CONF_UPDATE_INTERVAL))
+    cg.add(var.set_update_interval(update_ms))
+
     sens = await sensor.new_sensor(config[CONF_SENSOR])
     cg.add(var.set_sensor(sens))
 
@@ -52,7 +56,6 @@ async def to_code(config):
     cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(var.set_start_address(config[CONF_START_ADDRESS]))
     cg.add(var.set_count(config[CONF_COUNT]))
-    cg.add(var.set_update_interval(config[CONF_UPDATE_INTERVAL]))
     cg.add(var.set_offset(config[CONF_OFFSET]))
     cg.add(var.set_scale(config[CONF_SCALE]))
 
