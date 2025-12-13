@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart, sensor
-from esphome import core
+from esphome.const import CONF_ID
 
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
@@ -14,12 +14,15 @@ DATA_TYPES = {
 CONFIG_SCHEMA = (
     cv.Schema(
         {
-            cv.GenerateID(): cv.declare_id(CustomModbus),
+            cv.GenerateID(CONF_ID): cv.declare_id(CustomModbus),
+
             cv.Required("slave_id"): cv.int_range(min=1, max=247),
             cv.Required("register"): cv.hex_uint16_t,
             cv.Optional("count", default=1): cv.int_range(min=1, max=2),
             cv.Optional("data_type", default="uint16"): cv.one_of(*DATA_TYPES.keys(), lower=True),
             cv.Optional("scale", default=1.0): cv.float_,
+
+            # Sensor definition
             cv.Required("name"): cv.string,
         }
     )
@@ -28,7 +31,7 @@ CONFIG_SCHEMA = (
 )
 
 async def to_code(config):
-    var = cg.new_Pvariable(config["id"])
+    var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     await uart.register_uart_device(var, config)
 
@@ -38,5 +41,6 @@ async def to_code(config):
     cg.add(var.set_data_type(DATA_TYPES[config["data_type"]]))
     cg.add(var.set_scale(config["scale"]))
 
-    sens = await sensor.new_sensor(config)
+    # Create the sensor correctly
+    sens = await sensor.new_sensor({"name": config["name"]})
     cg.add(var.set_sensor(sens))
