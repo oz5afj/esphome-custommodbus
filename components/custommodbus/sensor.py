@@ -20,4 +20,5 @@ async def to_code(config):
 
     cg.add(var.set_name(config[CONF_NAME]))
 
-    await cg.register_component(var)
+    await cg.register_component(var, config)
+
