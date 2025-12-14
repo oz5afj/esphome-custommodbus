@@ -8,7 +8,7 @@ CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDev
 
 PLATFORM_SCHEMA = sensor.sensor_schema().extend(
     {
-        cv.Required(CONF_ID): cv.use_id(CustomModbus),
+        cv.Required("custommodbus_id"): cv.use_id(CustomModbus),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
         cv.Optional("count", default=1): cv.int_range(min=1, max=2),
@@ -25,7 +25,7 @@ DATA_TYPE_MAP = {
 }
 
 async def to_code(config):
-    parent = await cg.get_variable(config[CONF_ID])
+    parent = await cg.get_variable(config["custommodbus_id"])
     sens = await sensor.new_sensor(config)
 
     data_type = DATA_TYPE_MAP.get(config["data_type"], 0)
