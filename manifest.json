@@ -1,9 +1,9 @@
 {
-  "name": "custommodbus",
+  "domain": "custommodbus",
+  "name": "Custom Modbus Driver",
   "version": "1.0.0",
-  "build": {
-    "include": [
-      "components/custommodbus"
-    ]
-  }
+  "documentation": "https://github.com/oz5afj/esphome-custommodbus",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@oz5afj"]
 }
