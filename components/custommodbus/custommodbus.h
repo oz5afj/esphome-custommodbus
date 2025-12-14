@@ -73,4 +73,3 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
