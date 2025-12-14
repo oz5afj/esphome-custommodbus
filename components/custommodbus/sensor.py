@@ -1,49 +1,36 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import uart, sensor
-from esphome.const import CONF_ID
-
-custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
-CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
-
-DATA_TYPES = {
-    "uint16": 0,
-    "int16": 1,
-    "uint32": 2,
-    "uint32_r": 3,
-}
-
-CONFIG_SCHEMA = (
-    sensor.sensor_schema()
-    .extend(
-        {
-            cv.GenerateID(): cv.declare_id(CustomModbus),
-            cv.Required("slave_id"): cv.int_range(min=1, max=247),
-            cv.Required("register"): cv.hex_uint16_t,
-            cv.Optional("count", default=1): cv.int_range(min=1, max=2),
-            cv.Optional("data_type", default="uint16"): cv.one_of(*DATA_TYPES.keys(), lower=True),
-            cv.Optional("scale", default=1.0): cv.float_,
-        }
-    )
-    .extend(uart.UART_DEVICE_SCHEMA)
-    .extend(cv.COMPONENT_SCHEMA)
+from esphome.const import (
+    CONF_NAME,
+    CONF_UNIT_OF_MEASUREMENT,
+    CONF_ACCURACY_DECIMALS,
 )
 
+from . import CustomModbus
+
+DEPENDENCIES = ["uart"]
+
+# Dette er en simpel sensor-klasse
+custommodbus_sensor_ns = cg.esphome_ns.namespace("custommodbus_sensor")
+CustomModbusSensor = custommodbus_sensor_ns.class_("CustomModbusSensor", cg.PollingComponent, cg.Sensor)
+
+CONFIG_SCHEMA = cv.Schema({
+    cv.GenerateID(): cv.declare_id(CustomModbusSensor),
+    cv.Required("uart_id"): cv.use_id(esphome.components.uart.UART),
+    cv.Required("slave_id"): cv.int_,
+    cv.Required("register"): cv.int_,
+    cv.Optional(CONF_UNIT_OF_MEASUREMENT): cv.string,
+    cv.Optional(CONF_ACCURACY_DECIMALS): cv.int_,
+}).extend(cg.POLLING_COMPONENT_SCHEMA)
+
 async def to_code(config):
-    var = cg.new_Pvariable(config[CONF_ID])
-    await cg.register_component(var, config)
-    await uart.register_uart_device(var, config)
+    sensor = cg.new_Pvariable(config[CONF_ID])
+    await cg.register_component(sensor, config)
+    await cg.add(sensor.set_uart_id(config["uart_id"]))
+    await cg.add(sensor.set_slave_id(config["slave_id"]))
+    await cg.add(sensor.set_register(config["register"]))
 
-    sens = await sensor.new_sensor(config)
-
-    cg.add(var.set_slave_id(config["slave_id"]))
-    cg.add(
-        var.add_read_sensor(
-            config["register"],
-            config["count"],
-            DATA_TYPES[config["data_type"]],
-            config["scale"],
-            sens,
-        )
-    )
-
+    if CONF_UNIT_OF_MEASUREMENT in config:
+        cg.add(sensor.set_unit_of_measurement(config[CONF_UNIT_OF_MEASUREMENT]))
+    if CONF_ACCURACY_DECIMALS in config:
+        cg.add(sensor.set_accuracy_decimals(config[CONF_ACCURACY_DECIMALS]))
