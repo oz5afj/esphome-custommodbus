@@ -6,12 +6,11 @@ from esphome.const import (
     CONF_NAME,
     CONF_UNIT_OF_MEASUREMENT,
     CONF_ACCURACY_DECIMALS,
-    CONF_UPDATE_INTERVAL,
 )
 
 DEPENDENCIES = ["uart"]
 
-# Namespace for vores component
+# Namespace for custommodbus
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbusSensor = custommodbus_ns.class_(
     "CustomModbusSensor",
@@ -39,20 +38,22 @@ CONFIG_SCHEMA = (
     .extend(cv.polling_component_schema("10s"))
 )
 
+# to_code-funktionen med korrekt UART-håndtering
 async def to_code(config):
-    # Opret sensoren
+    # Opret sensor
     var = await sensor.new_sensor(config)
-    
-    # Registrer componenten
     await cg.register_component(var, config)
 
-    # Sæt parametre
-    cg.add(var.set_uart_id(config[CONF_UART_ID]))
+    # Hent UART-objektet korrekt
+    uart_obj = await cg.get_variable(config[CONF_UART_ID])
+    cg.add(var.set_uart(uart_obj))
+
+    # Sæt andre parametre
     cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(var.set_register(config[CONF_REGISTER]))
     cg.add(var.set_scale(config[CONF_SCALE]))
 
-    # Sæt unit og decimaler hvis de er defineret
+    # Unit og decimaler
     if CONF_UNIT_OF_MEASUREMENT in config:
         cg.add(var.set_unit_of_measurement(config[CONF_UNIT_OF_MEASUREMENT]))
     if CONF_ACCURACY_DECIMALS in config:
