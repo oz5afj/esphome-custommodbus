@@ -16,7 +16,10 @@ class CustomModbus : public esphome::Component, public esphome::uart::UARTDevice
   void set_slave_id(uint8_t id) { slave_id_ = id; }
   void set_register(uint16_t reg) { register_ = reg; }
   void set_count(uint8_t c) { count_ = c; }
-  void set_data_type(DataType t) { data_type_ = t; }
+
+  // Accept int from ESPHome and cast to enum
+  void set_data_type(int t) { data_type_ = static_cast<DataType>(t); }
+
   void set_scale(float s) { scale_ = s; }
   void set_sensor(esphome::sensor::Sensor *s) { sensor_ = s; }
 
@@ -35,3 +38,4 @@ class CustomModbus : public esphome::Component, public esphome::uart::UARTDevice
 };
 
 }  // namespace custommodbus
+
