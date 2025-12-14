@@ -22,8 +22,7 @@ CONFIG_SCHEMA = (
             cv.Optional("data_type", default="uint16"): cv.one_of(*DATA_TYPES.keys(), lower=True),
             cv.Optional("scale", default=1.0): cv.float_,
 
-            # Sensor definition
-            cv.Required("name"): cv.string,
+            cv.Required("sensor"): sensor.sensor_schema(),
         }
     )
     .extend(uart.UART_DEVICE_SCHEMA)
@@ -41,6 +40,5 @@ async def to_code(config):
     cg.add(var.set_data_type(DATA_TYPES[config["data_type"]]))
     cg.add(var.set_scale(config["scale"]))
 
-    # Create the sensor correctly
     sens = await sensor.new_sensor(config["sensor"])
     cg.add(var.set_sensor(sens))
