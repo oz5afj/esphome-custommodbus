@@ -13,16 +13,10 @@ CONF_SLAVE_ID = "slave_id"
 CONF_START_ADDRESS = "start_address"
 CONF_UPDATE_INTERVAL = "update_interval"
 
-CONF_REG0 = "reg0"
-CONF_REG1 = "reg1"
-CONF_REG2 = "reg2"
-CONF_REG3 = "reg3"
-CONF_REG4 = "reg4"
-CONF_REG5 = "reg5"
-CONF_REG6 = "reg6"
-CONF_REG7 = "reg7"
-CONF_REG8 = "reg8"
-CONF_REG9 = "reg9"
+REG_KEYS = [
+    "reg0","reg1","reg2","reg3","reg4",
+    "reg5","reg6","reg7","reg8","reg9"
+]
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -34,16 +28,7 @@ CONFIG_SCHEMA = cv.Schema(
 
         cv.Optional(CONF_UPDATE_INTERVAL, default="5s"): cv.positive_time_period_milliseconds,
 
-        cv.Required(CONF_REG0): sensor.sensor_schema(),
-        cv.Required(CONF_REG1): sensor.sensor_schema(),
-        cv.Required(CONF_REG2): sensor.sensor_schema(),
-        cv.Required(CONF_REG3): sensor.sensor_schema(),
-        cv.Required(CONF_REG4): sensor.sensor_schema(),
-        cv.Required(CONF_REG5): sensor.sensor_schema(),
-        cv.Required(CONF_REG6): sensor.sensor_schema(),
-        cv.Required(CONF_REG7): sensor.sensor_schema(),
-        cv.Required(CONF_REG8): sensor.sensor_schema(),
-        cv.Required(CONF_REG9): sensor.sensor_schema(),
+        **{cv.Required(k): sensor.sensor_schema() for k in REG_KEYS},
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -60,9 +45,6 @@ async def to_code(config):
     cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(var.set_start_address(config[CONF_START_ADDRESS]))
 
-    for idx, key in enumerate(
-        [CONF_REG0, CONF_REG1, CONF_REG2, CONF_REG3, CONF_REG4,
-         CONF_REG5, CONF_REG6, CONF_REG7, CONF_REG8, CONF_REG9]
-    ):
+    for idx, key in enumerate(REG_KEYS):
         sens = await sensor.new_sensor(config[key])
         cg.add(var.set_sensor(idx, sens))
