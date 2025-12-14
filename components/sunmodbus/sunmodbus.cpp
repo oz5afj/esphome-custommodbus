@@ -4,7 +4,7 @@
 namespace esphome {
 namespace sunmodbus {
 
-static const char *const TAG = "sunmodbus_split10";
+static const char *const TAG = "sunmodbus_split10_dbg";
 
 static uint16_t crc16_modbus(const uint8_t *buf, size_t len) {
   uint16_t crc = 0xFFFF;
@@ -21,26 +21,32 @@ static uint16_t crc16_modbus(const uint8_t *buf, size_t len) {
 }
 
 void SunModbus::setup() {
-  ESP_LOGI(TAG, "Setup: slave=%u start=%u (2 blocks á 5 regs)", this->slave_id_, this->start_address_);
+  ESP_LOGI(TAG, "Setup start");
+  ESP_LOGI(TAG, "Slave=%u start=%u", this->slave_id_, this->start_address_);
+  ESP_LOGI(TAG, "Setup done");
 }
 
 void SunModbus::update() {
-  uint8_t resp1[5 + 10 + 2] = {0};  // 5 regs = 10 bytes
+  ESP_LOGI(TAG, "ENTER update()");
+
+  uint8_t resp1[5 + 10 + 2] = {0};
   uint8_t resp2[5 + 10 + 2] = {0};
 
-  // Block 1: 598–602
+  ESP_LOGI(TAG, "Reading block1 (598–602)");
   if (!this->read_block_(this->slave_id_, this->start_address_, 5, resp1, sizeof(resp1))) {
     ESP_LOGW(TAG, "Block1 failed");
     return;
   }
+  ESP_LOGI(TAG, "Block1 OK");
 
-  // Block 2: 603–607
+  ESP_LOGI(TAG, "Reading block2 (603–607)");
   if (!this->read_block_(this->slave_id_, this->start_address_ + 5, 5, resp2, sizeof(resp2))) {
     ESP_LOGW(TAG, "Block2 failed");
     return;
   }
+  ESP_LOGI(TAG, "Block2 OK");
 
-  // Publish block 1
+  ESP_LOGI(TAG, "Publishing block1");
   for (int i = 0; i < 5; i++) {
     auto *s = this->sensors_[i];
     if (!s) continue;
@@ -49,10 +55,11 @@ void SunModbus::update() {
     uint8_t lo = resp1[3 + i * 2 + 1];
     int16_t raw = (hi << 8) | lo;
 
+    ESP_LOGI(TAG, "reg%d = %d", i, raw);
     s->publish_state(raw);
   }
 
-  // Publish block 2
+  ESP_LOGI(TAG, "Publishing block2");
   for (int i = 0; i < 5; i++) {
     auto *s = this->sensors_[i + 5];
     if (!s) continue;
@@ -61,13 +68,18 @@ void SunModbus::update() {
     uint8_t lo = resp2[3 + i * 2 + 1];
     int16_t raw = (hi << 8) | lo;
 
+    ESP_LOGI(TAG, "reg%d = %d", i + 5, raw);
     s->publish_state(raw);
   }
+
+  ESP_LOGI(TAG, "EXIT update()");
 }
 
 bool SunModbus::read_block_(uint8_t slave, uint16_t start, uint8_t count, uint8_t *buffer, uint16_t len) {
+  ESP_LOGI(TAG, "ENTER read_block_ start=%u count=%u", start, count);
+
   uint16_t expected = 5 + count * 2 + 2;
-  if (len < expected) return false;
+  ESP_LOGI(TAG, "Expected response length: %u", expected);
 
   uint8_t req[8];
   req[0] = slave;
@@ -80,17 +92,21 @@ bool SunModbus::read_block_(uint8_t slave, uint16_t start, uint8_t count, uint8_
   req[6] = crc & 0xFF;
   req[7] = crc >> 8;
 
+  ESP_LOGI(TAG, "Sending request");
   this->flush();
   this->write_array(req, 8);
 
   uint32_t timeout = millis() + 150;
   uint16_t idx = 0;
 
+  ESP_LOGI(TAG, "Waiting for response...");
   while (millis() < timeout && idx < expected) {
     int avail = this->available();
     if (avail > 0) {
       int to_read = std::min<int>(avail, expected - idx);
-      idx += this->read_array(buffer + idx, to_read);
+      int r = this->read_array(buffer + idx, to_read);
+      idx += r;
+      ESP_LOGI(TAG, "Read %d bytes (total %u/%u)", r, idx, expected);
     } else {
       delay(0);
     }
@@ -101,12 +117,15 @@ bool SunModbus::read_block_(uint8_t slave, uint16_t start, uint8_t count, uint8_
     return false;
   }
 
+  ESP_LOGI(TAG, "Response complete, checking CRC");
   uint16_t resp_crc = buffer[expected - 2] | (buffer[expected - 1] << 8);
   if (crc16_modbus(buffer, expected - 2) != resp_crc) {
     ESP_LOGW(TAG, "CRC mismatch");
     return false;
   }
 
+  ESP_LOGI(TAG, "CRC OK");
+  ESP_LOGI(TAG, "EXIT read_block_");
   return true;
 }
 
