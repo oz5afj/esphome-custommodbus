@@ -1,60 +1,34 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor, uart
-from esphome.const import (
-    CONF_ID,
-    CONF_NAME,
-    CONF_UNIT_OF_MEASUREMENT,
-    CONF_ACCURACY_DECIMALS,
-)
+from esphome.components import uart, sensor
+from esphome.const import CONF_ID
 
-DEPENDENCIES = ["uart"]
-
-# Namespace for custommodbus
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
-CustomModbusSensor = custommodbus_ns.class_(
-    "CustomModbusSensor",
-    cg.PollingComponent,
-    sensor.Sensor,
-)
+CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
-# Konfigurationsnøgler
-CONF_UART_ID = "uart_id"
-CONF_SLAVE_ID = "slave_id"
-CONF_REGISTER = "register"
-CONF_SCALE = "scale"
+PLATFORM_SCHEMA = sensor.SENSOR_PLATFORM_SCHEMA.extend(
+    {
+        cv.Required(CONF_ID): cv.use_id(CustomModbus),
+        cv.Required("slave_id"): cv.int_range(min=1, max=247),
+        cv.Required("register"): cv.hex_uint16_t,
+        cv.Optional("count", default=1): cv.int_range(min=1, max=2),
+        cv.Optional("scale", default=1.0): cv.float_,
+        cv.Optional("data_type", default="uint16"): cv.string,
+    }
+).extend(uart.UART_DEVICE_SCHEMA)
 
-# Schema for sensoren
-CONFIG_SCHEMA = (
-    sensor.sensor_schema(CustomModbusSensor)
-    .extend(
-        {
-            cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
-            cv.Required(CONF_SLAVE_ID): cv.uint8_t,
-            cv.Required(CONF_REGISTER): cv.uint16_t,
-            cv.Optional(CONF_SCALE, default=1.0): cv.float_,
-        }
-    )
-    .extend(cv.polling_component_schema("10s"))
-)
+DATA_TYPE_MAP = {
+    "uint16": 0,
+    "int16": 1,
+    "uint32": 2,
+    "uint32_r": 3,
+}
 
-# to_code-funktionen med korrekt UART-håndtering
 async def to_code(config):
-    # Opret sensor
-    var = await sensor.new_sensor(config)
-    await cg.register_component(var, config)
+    var = cg.get_variable(config[CONF_ID])
+    await uart.register_uart_device(var, config)
+    sens = await sensor.new_sensor(config)
+    data_type = DATA_TYPE_MAP.get(config["data_type"], 0)
 
-    # Hent UART-objektet korrekt
-    uart_obj = await cg.get_variable(config[CONF_UART_ID])
-    cg.add(var.set_uart(uart_obj))
-
-    # Sæt andre parametre
-    cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
-    cg.add(var.set_register(config[CONF_REGISTER]))
-    cg.add(var.set_scale(config[CONF_SCALE]))
-
-    # Unit og decimaler
-    if CONF_UNIT_OF_MEASUREMENT in config:
-        cg.add(var.set_unit_of_measurement(config[CONF_UNIT_OF_MEASUREMENT]))
-    if CONF_ACCURACY_DECIMALS in config:
-        cg.add(var.set_accuracy_decimals(config[CONF_ACCURACY_DECIMALS]))
+    cg.add(var.set_slave_id(config["slave_id"]))
+    cg.add(var.add_read_sensor(config["register"], config["count"], data_type, config["scale"], sens))
