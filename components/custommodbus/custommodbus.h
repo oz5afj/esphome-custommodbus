@@ -2,71 +2,51 @@
 
 #include "esphome/core/component.h"
 #include "esphome/components/uart/uart.h"
-#include "esphome/components/sensor/sensor.h"
-#include "esphome/components/switch/switch.h"
-#include "esphome/components/number/number.h"
-#include "esphome/components/select/select.h"
-#include "esphome/components/binary_sensor/binary_sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/sensor/sensor_component.h"
+#include "esphome/components/switch/switch_component.h"
+#include "esphome/components/number/number_component.h"
+#include "esphome/components/text_sensor/text_sensor_component.h"
+#include "esphome/components/select/select_component.h"
 
+namespace esphome {
 namespace custommodbus {
 
-enum DataType {
-  TYPE_UINT16 = 0,
-  TYPE_INT16 = 1,
-  TYPE_UINT32 = 2,
-  TYPE_UINT32_R = 3,
-};
-
-struct ReadItem {
-  uint16_t reg;
-  uint8_t count;
-  DataType type;
-  float scale;
-  esphome::sensor::Sensor *sensor;
-  esphome::binary_sensor::BinarySensor *binary_sensor;
-  uint16_t bitmask;
-  esphome::text_sensor::TextSensor *text_sensor;
-};
-
-struct WriteItem {
-  uint16_t reg;
-  uint16_t value;
-  uint16_t mask;
-  bool use_mask;
-};
-
-class CustomModbus : public esphome::Component, public esphome::uart::UARTDevice {
+class CustomModbus : public Component, public uart::UARTDevice {
  public:
-  void set_slave_id(uint8_t id) { slave_id_ = id; }
+  void set_slave_id(uint8_t id) { this->slave_id_ = id; }
+  uint8_t slave_id() const { return this->slave_id_; }
 
-  // READ
-  void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale,
-                       esphome::sensor::Sensor *s);
+  // Sensor
+  void add_sensor(sensor::Sensor *sens) { this->sensors_.push_back(sens); }
 
-  void add_binary_sensor(uint16_t reg, uint16_t mask,
-                         esphome::binary_sensor::BinarySensor *bs);
+  // Switch
+  void add_switch(switch_::Switch *sw) { this->switches_.push_back(sw); }
 
-  void add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts);
+  // Number
+  void add_number(number::Number *num) { this->numbers_.push_back(num); }
 
-  // WRITE
-  void write_single(uint16_t reg, uint16_t value);
-  void write_bitmask(uint16_t reg, uint16_t mask, bool state);
+  // Text sensor
+  void add_text_sensor(text_sensor::TextSensor *ts) { this->text_sensors_.push_back(ts); }
 
-  void setup() override {}
+  // Select
+  void add_select(select::Select *sel) { this->selects_.push_back(sel); }
+
+  void setup() override;
   void loop() override;
 
  protected:
-  uint8_t slave_id_{1};
+  uint8_t slave_id_;
 
-  std::vector<ReadItem> reads_;
-  std::vector<WriteItem> writes_;
+  std::vector<sensor::Sensor *> sensors_;
+  std::vector<switch_::Switch *> switches_;
+  std::vector<number::Number *> numbers_;
+  std::vector<text_sensor::TextSensor *> text_sensors_;
+  std::vector<select::Select *> selects_;
 
-  void process_reads();
-  void process_writes();
-
-  bool read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len);
-  uint16_t crc16(uint8_t *buf, uint8_t len);
+  // Helper functions til Modbus læs/skriv
+  void write_single(uint16_t reg, uint16_t value);
+  void write_bitmask(uint16_t reg, uint16_t bitmask, bool state);
 };
 
 }  // namespace custommodbus
+}  // namespace esphome
