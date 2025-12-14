@@ -8,7 +8,8 @@ CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDev
 
 PLATFORM_SCHEMA = sensor.sensor_schema().extend(
     {
-        cv.GenerateID(): cv.use_id(CustomModbus),
+        cv.GenerateID(CONF_ID): cv.use_id(CustomModbus),
+        cv.GenerateID(): cv.declare_id(sensor.Sensor),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
         cv.Optional("count", default=1): cv.int_range(min=1, max=2),
@@ -16,6 +17,7 @@ PLATFORM_SCHEMA = sensor.sensor_schema().extend(
         cv.Optional("data_type", default="uint16"): cv.string,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
+
 
 DATA_TYPE_MAP = {
     "uint16": 0,
