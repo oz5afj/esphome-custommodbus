@@ -23,7 +23,6 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
 
   void setup() override;
   void update() override;
-  float get_setup_priority() const override { return setup_priority::DATA; }
 
  protected:
   uart::UARTComponent *uart_{nullptr};
@@ -32,9 +31,7 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
 
   sensor::Sensor *sensors_[10]{nullptr};
 
-  uint32_t update_interval_{5000};
-
-  bool read_block10_(uint8_t slave, uint16_t start, uint8_t *resp, uint16_t len);
+  bool read_block_(uint8_t slave, uint16_t start, uint8_t count, uint8_t *resp, uint16_t len);
 };
 
 }  // namespace sunmodbus
