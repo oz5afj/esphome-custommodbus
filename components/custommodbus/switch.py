@@ -10,7 +10,7 @@ CONFIG_SCHEMA = (
     switch.switch_schema(CustomModbus)
     .extend(
         {
-            cv.GenerateID("custommodbus_switch_id"): cv.declare_id(CustomModbus),
+            cv.GenerateID(): cv.declare_id(CustomModbus),
             cv.Required("slave_id"): cv.int_range(min=1, max=247),
             cv.Required("register"): cv.hex_uint16_t,
             cv.Optional("bitmask"): cv.hex_uint16_t,
