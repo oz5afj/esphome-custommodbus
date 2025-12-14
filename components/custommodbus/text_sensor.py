@@ -10,7 +10,7 @@ CONFIG_SCHEMA = (
     text_sensor.text_sensor_schema(CustomModbus)
     .extend(
         {
-            cv.GenerateID(): cv.declare_id(CustomModbus),
+            cv.GenerateID("custommodbus_text_id"): cv.declare_id(CustomModbus),
             cv.Required("slave_id"): cv.int_range(min=1, max=247),
             cv.Required("register"): cv.hex_uint16_t,
         }
