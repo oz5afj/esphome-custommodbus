@@ -34,19 +34,11 @@ void SunModbus::update() {
     return;
   }
 
-  // Begræns buffer til en sikker størrelse (64 bytes)
   uint8_t resp_buf[64] = {0};
 
-  // Læs maks 30 registre (60 bytes) eller count_ hvis mindre
   uint16_t safe_count = std::min<uint16_t>(this->count_, 30);
   if (!this->read_holding_registers_(this->slave_id_, this->start_address_, safe_count, resp_buf, sizeof(resp_buf))) {
     ESP_LOGW(TAG, "Failed to read holding registers");
-    ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
-    return;
-  }
-
-  if (safe_count < 1) {
-    ESP_LOGW(TAG, "No registers read");
     ESP_LOGD(TAG, "update() end, took %u ms", millis() - t0);
     return;
   }
@@ -71,15 +63,9 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
   uint32_t t0 = millis();
   ESP_LOGD(TAG, "read_holding_registers_ start slave=%u start=%u count=%u", slave, start, count);
 
-  if (count == 0 || count > 125) {
-    ESP_LOGW(TAG, "Invalid count %u", count);
-    return false;
-  }
-
-  // Sikker cap: maks 30 registre (60 bytes)
   uint16_t safe_count = std::min<uint16_t>(count, 30);
   uint16_t expected_data_bytes = safe_count * 2;
-  uint16_t expected_response_len = 5 + expected_data_bytes; // addr + func + bytecount + data + crc(2)
+  uint16_t expected_response_len = 5 + expected_data_bytes;
 
   if (len < expected_data_bytes) {
     ESP_LOGW(TAG, "Buffer too small: need %u bytes", expected_data_bytes);
@@ -88,7 +74,7 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
 
   uint8_t req[8];
   req[0] = slave;
-  req[1] = 0x03; // Read Holding Registers
+  req[1] = 0x03;
   req[2] = (start >> 8) & 0xFF;
   req[3] = start & 0xFF;
   req[4] = (safe_count >> 8) & 0xFF;
@@ -97,16 +83,13 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
   req[6] = crc & 0xFF;
   req[7] = (crc >> 8) & 0xFF;
 
-  // Flush RX buffer before sending
   this->flush();
-
-  // Send request
   this->write_array(req, 8);
 
-  // Kort timeout og ikke-blokerende loop
-  uint32_t timeout_ms = 100; // kort timeout for at undgå blokering
+  uint32_t timeout_ms = 100;
   uint32_t start_ms = millis();
   uint16_t idx = 0;
+
   while ((millis() - start_ms) < timeout_ms && idx < expected_response_len) {
     int avail = this->available();
     if (avail > 0) {
@@ -114,44 +97,34 @@ bool SunModbus::read_holding_registers_(uint8_t slave, uint16_t start, uint16_t 
       int r = this->read_array(buffer + idx, to_read);
       if (r > 0) idx += r;
     } else {
-      delay(0); // yield
+      delay(0);
     }
   }
 
   if (idx < 5) {
-    ESP_LOGW(TAG, "Response too short: %u bytes (timeout %u ms)", idx, timeout_ms);
-    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
+    ESP_LOGW(TAG, "Response too short: %u bytes", idx);
     return false;
   }
 
-  // Validate CRC (last two bytes)
   uint16_t resp_crc = (uint16_t)buffer[idx - 2] | ((uint16_t)buffer[idx - 1] << 8);
   if (crc16_modbus(buffer, idx - 2) != resp_crc) {
     ESP_LOGW(TAG, "CRC mismatch");
-    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
     return false;
   }
 
-  // Check for exception
   if (buffer[1] & 0x80) {
     ESP_LOGW(TAG, "Modbus exception code: %u", buffer[2]);
-    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
     return false;
   }
 
   uint8_t bytecount = buffer[2];
-  if (bytecount == 0) {
-    ESP_LOGW(TAG, "Zero bytecount in response");
-    ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
-    return false;
-  }
-
   uint16_t copy_len = std::min<uint16_t>(bytecount, expected_data_bytes);
+
   for (uint16_t i = 0; i < copy_len; ++i) {
     buffer[i] = buffer[3 + i];
   }
 
-  ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms, bytes=%u", millis() - t0, idx);
+  ESP_LOGD(TAG, "read_holding_registers_ end, took %u ms", millis() - t0);
   return true;
 }
 
