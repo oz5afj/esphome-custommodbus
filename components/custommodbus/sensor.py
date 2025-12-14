@@ -6,9 +6,9 @@ from esphome.const import CONF_ID
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
-PLATFORM_SCHEMA = sensor.sensor_schema(CustomModbus).extend(
+PLATFORM_SCHEMA = sensor.sensor_schema().extend(
     {
-        cv.Required(CONF_ID): cv.use_id(CustomModbus),
+        cv.GenerateID(): cv.use_id(CustomModbus),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
         cv.Optional("count", default=1): cv.int_range(min=1, max=2),
@@ -25,15 +25,18 @@ DATA_TYPE_MAP = {
 }
 
 async def to_code(config):
-    var = cg.get_variable(config[CONF_ID])
-    await uart.register_uart_device(var, config)
+    parent = await cg.get_variable(config[CONF_ID])
     sens = await sensor.new_sensor(config)
-    data_type = DATA_TYPE_MAP.get(config["data_type"], 0)
-    cg.add(var.set_slave_id(config["slave_id"]))
-    cg.add(var.add_read_sensor(config["register"], config["count"], data_type, config["scale"], sens))
 
-cg.add(var.set_slave_id(config["slave_id"]))
-cg.add(var.add_read_sensor(config["register"], config["count"], data_type, config["scale"], sens))
+    data_type = DATA_TYPE_MAP.get(config["data_type"], 0)
+
+    cg.add(parent.set_slave_id(config["slave_id"]))
+    cg.add(parent.add_read_sensor(
+        config["register"],
+        config["count"],
+        data_type,
+        config["scale"],
+        sens
+    ))
 
 CONFIG_SCHEMA = PLATFORM_SCHEMA
-
