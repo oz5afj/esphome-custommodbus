@@ -14,7 +14,7 @@ DATA_TYPES = {
 }
 
 CONFIG_SCHEMA = (
-    sensor.sensor_schema()
+    sensor.sensor_schema(CustomModbus)
     .extend(
         {
             cv.GenerateID(): cv.declare_id(CustomModbus),
