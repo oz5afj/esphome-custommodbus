@@ -7,26 +7,19 @@
 namespace esphome {
 namespace sunmodbus {
 
-enum DataType {
-  TYPE_UINT16 = 0,
-  TYPE_INT16 = 1,
-};
-
 class SunModbus : public PollingComponent, public uart::UARTDevice {
  public:
   SunModbus() = default;
-  explicit SunModbus(uint32_t update_interval_ms) : PollingComponent(update_interval_ms) {}
 
   void set_uart(uart::UARTComponent *uart) { this->uart_ = uart; }
-  void set_sensor(sensor::Sensor *sensor) { this->sensor_ = sensor; }
-
   void set_slave_id(uint8_t slave_id) { this->slave_id_ = slave_id; }
   void set_start_address(uint16_t start_address) { this->start_address_ = start_address; }
-  void set_offset(uint16_t offset) { this->offset_ = offset; }
-  void set_scale(float scale) { this->scale_ = scale; }
-  void set_type(DataType type) { this->type_ = type; }
 
   void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
+
+  void set_sensor(uint8_t index, sensor::Sensor *sens) {
+    if (index < 10) this->sensors_[index] = sens;
+  }
 
   void setup() override;
   void update() override;
@@ -34,17 +27,14 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
 
  protected:
   uart::UARTComponent *uart_{nullptr};
-  sensor::Sensor *sensor_{nullptr};
-
   uint8_t slave_id_{1};
-  uint16_t start_address_{0};
-  uint16_t offset_{0};
-  float scale_{1.0f};
-  DataType type_{TYPE_UINT16};
+  uint16_t start_address_{598};
+
+  sensor::Sensor *sensors_[10]{nullptr};
 
   uint32_t update_interval_{5000};
 
-  bool read_single_register_(uint8_t slave, uint16_t address, uint16_t &out_value);
+  bool read_block10_(uint8_t slave, uint16_t start, uint8_t *resp, uint16_t len);
 };
 
 }  // namespace sunmodbus
