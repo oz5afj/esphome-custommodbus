@@ -1,12 +1,13 @@
 #pragma once
 
 #include "esphome/core/component.h"
-#include "esphome/components/uart/uart_component.h"
-#include "esphome/components/sensor/sensor_component.h"
-#include "esphome/components/binary_sensor/binary_sensor_component.h"
-#include "esphome/components/text_sensor/text_sensor_component.h"
-#include "esphome/components/number/number_component.h"
-#include "esphome/components/select/select_component.h"
+#include "esphome/components/uart/uart.h"
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/number/number.h"
+#include "esphome/components/select/select.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -72,3 +73,4 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
