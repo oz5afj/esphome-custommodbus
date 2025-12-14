@@ -1,0 +1,9 @@
+{
+  "name": "custommodbus",
+  "version": "1.0.0",
+  "build": {
+    "include": [
+      "components/custommodbus"
+    ]
+  }
+}
