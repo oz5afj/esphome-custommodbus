@@ -18,7 +18,7 @@ void CustomModbus::loop() {
 
   uint8_t frame[8];
   frame[0] = slave_id_;
-  frame[1] = 3;
+  frame[1] = 3;  // Read Holding Registers
   frame[2] = (register_ >> 8) & 0xFF;
   frame[3] = register_ & 0xFF;
   frame[4] = (count_ >> 8) & 0xFF;
@@ -32,12 +32,12 @@ void CustomModbus::loop() {
   this->flush();
   esphome::delay(20);
 
-  uint8_t resp[7];
   if (this->available() < 7) {
     ESP_LOGW(TAG, "No response");
     return;
   }
 
+  uint8_t resp[7];
   this->read_array(resp, 7);
 
   if (resp[0] != slave_id_ || resp[1] != 3) {
@@ -46,8 +46,19 @@ void CustomModbus::loop() {
   }
 
   uint16_t raw = (resp[3] << 8) | resp[4];
+  float value = 0;
 
-  float value = raw * scale_;
+  switch (data_type_) {
+    case TYPE_UINT16:
+      value = raw;
+      break;
+
+    case TYPE_INT16:
+      value = (int16_t) raw;
+      break;
+  }
+
+  value *= scale_;
   sensor_->publish_state(value);
 }
 
