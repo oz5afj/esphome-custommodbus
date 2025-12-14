@@ -31,3 +31,9 @@ async def to_code(config):
     data_type = DATA_TYPE_MAP.get(config["data_type"], 0)
     cg.add(var.set_slave_id(config["slave_id"]))
     cg.add(var.add_read_sensor(config["register"], config["count"], data_type, config["scale"], sens))
+
+cg.add(var.set_slave_id(config["slave_id"]))
+cg.add(var.add_read_sensor(config["register"], config["count"], data_type, config["scale"], sens))
+
+CONFIG_SCHEMA = PLATFORM_SCHEMA
+
