@@ -1,38 +1,125 @@
 #pragma once
 
-#include "esphome/core/component.h"
+
+
 #include "esphome/components/uart/uart.h"
-#include "esphome/components/sensor/sensor.h"
+
+#include "esphome/core/component.h"
+
+
+
+
 
 namespace esphome {
-namespace sunmodbus {
 
-class SunModbus : public PollingComponent, public uart::UARTDevice {
- public:
-  SunModbus() = default;
 
-  void set_uart(uart::UARTComponent *uart) { this->uart_ = uart; }
-  void set_slave_id(uint8_t slave_id) { this->slave_id_ = slave_id; }
-  void set_start_address(uint16_t start_address) { this->start_address_ = start_address; }
+namespace custommodbus {
 
-  void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
 
-  void set_sensor(uint8_t index, sensor::Sensor *sens) {
-    if (index < 10) this->sensors_[index] = sens;
-  }
 
-  void setup() override;
-  void update() override;
+enum DataType {
 
- protected:
-  uart::UARTComponent *uart_{nullptr};
-  uint8_t slave_id_{1};
-  uint16_t start_address_{598};
+  TYPE_UINT16,
 
-  sensor::Sensor *sensors_[10]{nullptr};
+  TYPE_INT16,
 
-  bool read_block_(uint8_t slave, uint16_t start, uint8_t count, uint8_t *resp, uint16_t len);
 };
 
-}  // namespace sunmodbus
+
+
+
+class CustomModbus : public Component, public uart::UARTDevice {
+
+ public:
+
+
+  void set_slave_id(uint8_t id) { slave_id_ = id; }
+
+
+  void set_start_address(uint16_t addr) { start_address_ = addr; }
+
+
+  void set_count(uint16_t c) { count_ = c; }
+
+
+  void set_update_interval(uint32_t ms) { update_interval_ = ms; }
+
+
+
+
+
+  void add_sensor(sensor::Sensor *s, uint8_t offset, DataType type, float scale);
+
+
+
+
+  void setup() override;
+
+  void loop() override;
+
+
+
+
+
+
+
+
+
+
+
+
+ protected:
+
+
+
+
+
+  uint8_t slave_id_;
+
+  uint16_t start_address_;
+
+  uint16_t count_;
+
+
+
+
+  uint32_t update_interval_;
+
+
+  uint32_t last_read_{0};
+
+
+
+
+
+  struct SensorEntry {
+
+
+    sensor::Sensor *sensor;
+
+
+    uint8_t offset;
+
+
+    DataType type;
+
+
+    float scale;
+
+
+  };
+
+
+
+
+
+  std::vector<SensorEntry> sensors_;
+
+};
+
+
+
+
+}  // namespace custommodbus
+
 }  // namespace esphome
