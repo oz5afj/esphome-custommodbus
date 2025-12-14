@@ -1,13 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 
-from . import sensor
-from . import binary_sensor
-from . import switch
-from . import number
-from . import select
-from . import text_sensor
-
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component)
 
