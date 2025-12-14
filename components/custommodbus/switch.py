@@ -7,7 +7,7 @@ custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
 CONFIG_SCHEMA = (
-    switch.switch_schema()
+    switch.switch_schema(CustomModbus)
     .extend(
         {
             cv.GenerateID(): cv.declare_id(CustomModbus),
