@@ -1,7 +1,7 @@
 #include "custommodbus.h"
 #include "esphome/core/log.h"
 
-namespace esphome {
+
 namespace custommodbus {
 
 static const char *const TAG = "custommodbus";
@@ -182,3 +182,4 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
