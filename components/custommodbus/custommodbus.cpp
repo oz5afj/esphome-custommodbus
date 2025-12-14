@@ -1,12 +1,4 @@
 #include "custommodbus.h"
-#include "esphome/components/sensor/sensor.h"
-#include "esphome/components/binary_sensor/binary_sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
-#include "esphome/components/number/number.h"
-#include "esphome/components/select/select.h"
-#include "esphome/components/switch/switch.h"
-#include "esphome/components/uart/uart.h"
-#include "esphome/core/component.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -162,7 +154,7 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
   this->write_array(frame, 8);
   this->flush();
 
-  // Non-blocking delay: vent maks 200 ms for data
+  // Non-blocking vent op til 200 ms
   uint32_t start = esphome::millis();
   while (this->available() < 5 + count * 2) {
     if (esphome::millis() - start > 200) {
@@ -190,4 +182,3 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
