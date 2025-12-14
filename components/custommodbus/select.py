@@ -10,7 +10,7 @@ CONFIG_SCHEMA = (
     select.select_schema(CustomModbus)
     .extend(
         {
-            cv.GenerateID(): cv.declare_id(CustomModbus),
+            cv.GenerateID("custommodbus_select_id"): cv.declare_id(CustomModbus),
             cv.Required("slave_id"): cv.int_range(min=1, max=247),
             cv.Required("register"): cv.hex_uint16_t,
             cv.Required("options"): cv.Schema({cv.string: cv.uint16_t}),
