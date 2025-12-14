@@ -1,3 +1,11 @@
+#pragma once
+
+#include "esphome/core/component.h"
+#include "esphome/components/uart/uart.h"
+#include "esphome/components/sensor/sensor.h"
+
+namespace custommodbus {
+
 enum DataType {
   TYPE_UINT16 = 0,
   TYPE_INT16 = 1,
@@ -25,3 +33,5 @@ class CustomModbus : public esphome::Component, public esphome::uart::UARTDevice
 
   uint16_t crc16(uint8_t *buf, uint8_t len);
 };
+
+}  // namespace custommodbus
