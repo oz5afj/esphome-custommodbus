@@ -1,7 +1,7 @@
 #include "custommodbus.h"
 #include "esphome/core/log.h"
 
-
+namespace esphome {
 namespace custommodbus {
 
 static const char *const TAG = "custommodbus";
@@ -12,12 +12,14 @@ void CustomModbus::setup() {
 
 void CustomModbus::loop() {
   static uint32_t last = 0;
-  uint32_t now = esphome::millis();
-  if (now - last < 200) return;  // Polling hver 200 ms
+  const uint32_t now = millis();
+  if (now - last < 200)
+    return;  // Polling hver 200 ms
+
   last = now;
 
-  process_writes();
-  process_reads();
+  this->process_writes();
+  this->process_reads();
 }
 
 void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
@@ -31,7 +33,7 @@ void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
   item.binary_sensor = nullptr;
   item.text_sensor = nullptr;
   item.bitmask = 0;
-  reads_.push_back(item);
+  this->reads_.push_back(item);
 }
 
 void CustomModbus::add_binary_sensor(uint16_t reg, uint16_t mask,
@@ -40,11 +42,12 @@ void CustomModbus::add_binary_sensor(uint16_t reg, uint16_t mask,
   item.reg = reg;
   item.count = 1;
   item.type = TYPE_UINT16;
+  item.scale = 1.0f;
   item.sensor = nullptr;
   item.binary_sensor = bs;
   item.text_sensor = nullptr;
   item.bitmask = mask;
-  reads_.push_back(item);
+  this->reads_.push_back(item);
 }
 
 void CustomModbus::add_text_sensor(uint16_t reg, text_sensor::TextSensor *ts) {
@@ -52,19 +55,21 @@ void CustomModbus::add_text_sensor(uint16_t reg, text_sensor::TextSensor *ts) {
   item.reg = reg;
   item.count = 1;
   item.type = TYPE_UINT16;
+  item.scale = 1.0f;
   item.sensor = nullptr;
   item.binary_sensor = nullptr;
   item.text_sensor = ts;
   item.bitmask = 0;
-  reads_.push_back(item);
+  this->reads_.push_back(item);
 }
 
 void CustomModbus::write_single(uint16_t reg, uint16_t value) {
   WriteItem w{};
   w.reg = reg;
   w.value = value;
+  w.mask = 0;
   w.use_mask = false;
-  writes_.push_back(w);
+  this->writes_.push_back(w);
 }
 
 void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
@@ -73,64 +78,79 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
   w.mask = mask;
   w.value = state ? mask : 0;
   w.use_mask = true;
-  writes_.push_back(w);
+  this->writes_.push_back(w);
 }
 
 void CustomModbus::process_reads() {
-  for (auto &r : reads_) {
+  for (auto &r : this->reads_) {
     uint8_t resp[64]{0};
     uint8_t resp_len = 0;
 
-    if (!read_registers(r.reg, r.count, resp, resp_len))
+    if (!this->read_registers(r.reg, r.count, resp, resp_len))
       continue;
 
-    uint16_t raw16 = (resp[3] << 8) | resp[4];
+    const uint16_t raw16 = (resp[3] << 8) | resp[4];
     uint32_t raw32 = 0;
     if (r.count == 2)
-      raw32 = (resp[3] << 24) | (resp[4] << 16) | (resp[5] << 8) | resp[6];
+      raw32 = (static_cast<uint32_t>(resp[3]) << 24) |
+              (static_cast<uint32_t>(resp[4]) << 16) |
+              (static_cast<uint32_t>(resp[5]) << 8) |
+              static_cast<uint32_t>(resp[6]);
 
-    if (r.sensor) {
-      float value = 0;
+    if (r.sensor != nullptr) {
+      float value = 0.0f;
       switch (r.type) {
-        case TYPE_UINT16: value = raw16; break;
-        case TYPE_INT16: value = (int16_t)raw16; break;
-        case TYPE_UINT32: value = raw32; break;
-        case TYPE_UINT32_R: value = __builtin_bswap32(raw32); break;
+        case TYPE_UINT16:
+          value = static_cast<float>(raw16);
+          break;
+        case TYPE_INT16:
+          value = static_cast<float>(static_cast<int16_t>(raw16));
+          break;
+        case TYPE_UINT32:
+          value = static_cast<float>(raw32);
+          break;
+        case TYPE_UINT32_R:
+          value = static_cast<float>(__builtin_bswap32(raw32));
+          break;
       }
       value *= r.scale;
       r.sensor->publish_state(value);
     }
 
-    if (r.binary_sensor) {
-      bool state = raw16 & r.bitmask;
+    if (r.binary_sensor != nullptr) {
+      const bool state = (raw16 & r.bitmask) != 0;
       r.binary_sensor->publish_state(state);
     }
 
-    if (r.text_sensor) {
+    if (r.text_sensor != nullptr) {
       char buf[16];
-      sprintf(buf, "%04X", raw16);
+      snprintf(buf, sizeof(buf), "%04X", raw16);
       r.text_sensor->publish_state(buf);
     }
   }
 }
 
 void CustomModbus::process_writes() {
-  if (writes_.empty()) return;
+  if (this->writes_.empty())
+    return;
 
-  WriteItem w = writes_.front();
-  writes_.erase(writes_.begin());
+  const WriteItem w = this->writes_.front();
+  this->writes_.erase(this->writes_.begin());
 
   uint8_t frame[8];
-  frame[0] = slave_id_;
+  frame[0] = this->slave_id_;
   frame[1] = 6;  // Write Single Register
   frame[2] = (w.reg >> 8) & 0xFF;
   frame[3] = w.reg & 0xFF;
 
   uint16_t val = w.value;
+
+  // Hvis du senere vil lave read-modify-write mht. mask, sker det her.
+  // Lige nu sender vi bare w.value direkte.
   frame[4] = (val >> 8) & 0xFF;
   frame[5] = val & 0xFF;
 
-  uint16_t crc = crc16(frame, 6);
+  uint16_t crc = this->crc16(frame, 6);
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
@@ -140,31 +160,32 @@ void CustomModbus::process_writes() {
 
 bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len) {
   uint8_t frame[8];
-  frame[0] = slave_id_;
+  frame[0] = this->slave_id_;
   frame[1] = 3;  // Read Holding Registers
   frame[2] = (reg >> 8) & 0xFF;
   frame[3] = reg & 0xFF;
   frame[4] = 0;
   frame[5] = count;
 
-  uint16_t crc = crc16(frame, 6);
+  uint16_t crc = this->crc16(frame, 6);
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
   this->write_array(frame, 8);
   this->flush();
 
-  // Non-blocking vent op til 200 ms
-  uint32_t start = esphome::millis();
-  while (this->available() < 5 + count * 2) {
-    if (esphome::millis() - start > 200) {
-      ESP_LOGW(TAG, "No response from slave %u reg 0x%04X", slave_id_, reg);
+  const uint32_t start = millis();
+  const uint8_t expected = static_cast<uint8_t>(5 + count * 2);
+
+  while (this->available() < expected) {
+    if (millis() - start > 200) {
+      ESP_LOGW(TAG, "No response from slave %u reg 0x%04X", this->slave_id_, reg);
       return false;
     }
   }
 
-  this->read_array(resp, 5 + count * 2);
-  resp_len = 5 + count * 2;
+  this->read_array(resp, expected);
+  resp_len = expected;
   return true;
 }
 
@@ -173,14 +194,14 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
   for (uint8_t pos = 0; pos < len; pos++) {
     crc ^= buf[pos];
     for (uint8_t i = 0; i < 8; i++) {
-      if (crc & 1) crc = (crc >> 1) ^ 0xA001;
-      else crc >>= 1;
+      if ((crc & 0x0001u) != 0u)
+        crc = (crc >> 1) ^ 0xA001u;
+      else
+        crc >>= 1;
     }
   }
   return crc;
 }
 
 }  // namespace custommodbus
-
-
-
+}  // namespace esphome
