@@ -14,10 +14,10 @@ DATA_TYPES = {
 }
 
 CONFIG_SCHEMA = (
-     sensor.sensor_schema()
+    sensor.sensor_schema()
     .extend(
         {
-            cv.GenerateID("custommodbus_sensor_id"): cv.declare_id(CustomModbus),
+            cv.GenerateID(): cv.declare_id(CustomModbus),
             cv.Required("slave_id"): cv.int_range(min=1, max=247),
             cv.Required("register"): cv.hex_uint16_t,
             cv.Optional("count", default=1): cv.int_range(min=1, max=2),
@@ -46,3 +46,4 @@ async def to_code(config):
             sens,
         )
     )
+
