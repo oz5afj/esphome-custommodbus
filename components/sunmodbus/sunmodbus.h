@@ -22,7 +22,6 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
 
   void set_slave_id(uint8_t slave_id) { this->slave_id_ = slave_id; }
   void set_start_address(uint16_t start_address) { this->start_address_ = start_address; }
-  void set_count(uint16_t count) { this->count_ = count; }
   void set_offset(uint16_t offset) { this->offset_ = offset; }
   void set_scale(float scale) { this->scale_ = scale; }
   void set_type(DataType type) { this->type_ = type; }
@@ -39,14 +38,13 @@ class SunModbus : public PollingComponent, public uart::UARTDevice {
 
   uint8_t slave_id_{1};
   uint16_t start_address_{0};
-  uint16_t count_{1};
   uint16_t offset_{0};
   float scale_{1.0f};
   DataType type_{TYPE_UINT16};
 
-  uint32_t update_interval_{1000};
+  uint32_t update_interval_{5000};
 
-  bool read_holding_registers_(uint8_t slave, uint16_t start, uint16_t count, uint8_t *buffer, uint16_t len);
+  bool read_single_register_(uint8_t slave, uint16_t address, uint16_t &out_value);
 };
 
 }  // namespace sunmodbus
