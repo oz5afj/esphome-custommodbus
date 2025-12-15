@@ -177,16 +177,18 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
   const uint32_t start = millis();
   const uint8_t expected = static_cast<uint8_t>(5 + count * 2);
 
-  while (this->available() < expected) {
-    if (millis() - start > 200) {
-      ESP_LOGW(TAG, "No response from slave %u reg 0x%04X", this->slave_id_, reg);
-      return false;
+  // Ikke hård blokkering – vi giver CPU'en luft til WiFi/API
+  while (millis() - start < 200) {
+    if (this->available() >= expected) {
+      this->read_array(resp, expected);
+      resp_len = expected;
+      return true;
     }
+    delay(1);
   }
 
-  this->read_array(resp, expected);
-  resp_len = expected;
-  return true;
+  ESP_LOGW(TAG, "No response from slave %u reg 0x%04X", this->slave_id_, reg);
+  return false;
 }
 
 uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
