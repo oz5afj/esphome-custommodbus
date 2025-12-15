@@ -10,7 +10,7 @@ static const char *const TAG = "custommodbus";
 // ============================================================================
 //  SETUP
 // ============================================================================
-//  Kører én gang ved boot. Logger kun slave-ID.
+//  Kører én gang efter boot. Her logger vi, at komponenten er sat op.
 //  Ingen Modbus-trafik her.
 // ============================================================================
 void CustomModbus::setup() {
@@ -21,18 +21,17 @@ void CustomModbus::setup() {
 // ============================================================================
 //  LOOP
 // ============================================================================
-//  ESPHome kalder loop() mange gange i sekundet.
-//  Vi må ALDRIG blokere her, ellers dør WiFi og API.
-//
-//  Derfor:
-//    - Vi kører kun Modbus hver 200 ms
-//    - process_reads() læser KUN én sensor per loop (round-robin)
+//  ESPHome kalder loop() ofte. Vi må ALDRIG lave tungt eller blokkerende arbejde.
+//  Vi gør derfor:
+//    - Kun én iteration hver 200 ms
+//    - process_writes() håndterer max én write ad gangen
+//    - process_reads() håndterer KUN én read per loop (round-robin)
 // ============================================================================
 void CustomModbus::loop() {
   static uint32_t last = 0;
   const uint32_t now = millis();
 
-  // Kun hver 200 ms
+  // Begræns polling til hver 200 ms
   if (now - last < 200)
     return;
 
@@ -44,10 +43,11 @@ void CustomModbus::loop() {
 
 //
 // ============================================================================
-//  ADD SENSOR FUNCTIONS
+//  REGISTRERING AF READS
 // ============================================================================
-//  Disse funktioner opretter ReadItem structs og lægger dem i reads_-listen.
-//  Ingen logik her — kun opsætning.
+//  Disse funktioner kaldes under konfiguration (fra Python/YAML) for at
+//  oprette ReadItem og lægge dem i reads_-vektoren.
+//  De laver IKKE Modbus-opkald selv.
 // ============================================================================
 
 void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
@@ -93,10 +93,10 @@ void CustomModbus::add_text_sensor(uint16_t reg, text_sensor::TextSensor *ts) {
 
 //
 // ============================================================================
-//  WRITE FUNCTIONS
+//  QUEUE WRITES
 // ============================================================================
-//  Disse lægger write-kommandoer i writes_-køen.
-//  Selve afsendelsen sker i process_writes().
+//  Disse funktioner tilføjer bare WriteItems til køen.
+//  Selve Modbus‑sende‑logikken ligger i process_writes().
 // ============================================================================
 
 void CustomModbus::write_single(uint16_t reg, uint16_t value) {
@@ -119,40 +119,40 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
 
 //
 // ============================================================================
-//  PROCESS READS  (VIGTIG ÆNDRING)
+//  PROCESS READS  (Round-robin, én sensor per loop)
 // ============================================================================
-//  Tidligere: læste ALLE sensorer i ét loop → blokerede ESPHome API.
+//  Tidligere var her et for-loop over ALLE reads_ → kunne blokere længe.
 //
-//  Nu: round-robin → kun ÉN sensor per loop.
-//  Dette gør driveren 100% non-blocking og stabil.
+//  Nu:
+//    - static index holder styr på hvor vi er i listen
+//    - hver loop() kaldes kun én ReadItem
+//    - API og WiFi får masser af CPU-tid
 // ============================================================================
-
 void CustomModbus::process_reads() {
   static size_t index = 0;
 
-  // Ingen sensorer
   if (this->reads_.empty())
     return;
 
-  // Loop tilbage til start
+  // Wrap index hvis vi når slutningen
   if (index >= this->reads_.size())
     index = 0;
 
-  // Vælg én sensor
+  // Vælg næste ReadItem i round-robin
   auto &r = this->reads_[index];
   index++;
 
   uint8_t resp[64]{0};
   uint8_t resp_len = 0;
 
-  // Læs registeret (non-blocking)
+  // Kald read_registers() (non-blocking i tid og CPU)
   if (!this->read_registers(r.reg, r.count, resp, resp_len))
-    return;
+    return;  // Timeout eller fejl, vi logger i read_registers()
 
-  // Udpak 16-bit værdi
+  // Udpak 16-bit værdi (første register)
   const uint16_t raw16 = (resp[3] << 8) | resp[4];
 
-  // Udpak 32-bit værdi hvis count == 2
+  // Udpak 32-bit, hvis der er to registre
   uint32_t raw32 = 0;
   if (r.count == 2) {
     raw32 = (static_cast<uint32_t>(resp[3]) << 24) |
@@ -166,10 +166,18 @@ void CustomModbus::process_reads() {
     float value = 0.0f;
 
     switch (r.type) {
-      case TYPE_UINT16: value = raw16; break;
-      case TYPE_INT16: value = (int16_t)raw16; break;
-      case TYPE_UINT32: value = raw32; break;
-      case TYPE_UINT32_R: value = __builtin_bswap32(raw32); break;
+      case TYPE_UINT16:
+        value = static_cast<float>(raw16);
+        break;
+      case TYPE_INT16:
+        value = static_cast<float>(static_cast<int16_t>(raw16));
+        break;
+      case TYPE_UINT32:
+        value = static_cast<float>(raw32);
+        break;
+      case TYPE_UINT32_R:
+        value = static_cast<float>(__builtin_bswap32(raw32));
+        break;
     }
 
     value *= r.scale;
@@ -178,7 +186,7 @@ void CustomModbus::process_reads() {
 
   // BINARY SENSOR
   if (r.binary_sensor != nullptr) {
-    bool state = (raw16 & r.bitmask) != 0;
+    const bool state = (raw16 & r.bitmask) != 0;
     r.binary_sensor->publish_state(state);
   }
 
@@ -194,10 +202,9 @@ void CustomModbus::process_reads() {
 // ============================================================================
 //  PROCESS WRITES
 // ============================================================================
-//  Sender én write-kommando per loop.
-//  Blocking er minimal og påvirker ikke API.
+//  Sender én Modbus "Write Single Register" per loop.
+//  Blocking her er minimal og påvirker ikke ESPHome API væsentligt.
 // ============================================================================
-
 void CustomModbus::process_writes() {
   if (this->writes_.empty())
     return;
@@ -212,6 +219,7 @@ void CustomModbus::process_writes() {
   frame[3] = w.reg & 0xFF;
 
   uint16_t val = w.value;
+  // På sigt kan du lave "read-modify-write" her, hvis use_mask = true
 
   frame[4] = (val >> 8) & 0xFF;
   frame[5] = val & 0xFF;
@@ -226,14 +234,16 @@ void CustomModbus::process_writes() {
 
 //
 // ============================================================================
-//  READ REGISTERS  (VIGTIG ÆNDRING)
+//  READ REGISTERS (Non-blocking, med delay(1))
 // ============================================================================
-//  Tidligere: tight while-loop → ESP32 fik ingen CPU → API døde.
+//  Sender en Modbus "Read Holding Registers (0x03)" forespørgsel og
+//  venter op til 200 ms på svar.
 //
-//  Nu: delay(1) i loopet → WiFi og API får CPU-tid.
-//  Timeout efter 200 ms.
+//  VIGTIGT:
+//    - Vi bruger while(millis - start < 200) + delay(1)
+//    - Ingen stram while(available() < expected)-loop
+//    - Giver CPU-tid til WiFi og ESPHome API
 // ============================================================================
-
 bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len) {
   uint8_t frame[8];
   frame[0] = this->slave_id_;
@@ -247,28 +257,30 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-  // Send Modbus-forespørgsel
+  // Send forespørgsel
   this->write_array(frame, 8);
   this->flush();
 
   const uint32_t start = millis();
-  const uint8_t expected = 5 + count * 2;
+  const uint8_t expected = static_cast<uint8_t>(5 + count * 2);
 
-  // Vent på svar — men giv CPU-tid til WiFi/API
   while (millis() - start < 200) {
     int avail = this->available();
 
     if (avail >= expected) {
+      // Vi har nok bytes, læs hele svaret
       this->read_array(resp, expected);
       resp_len = expected;
       return true;
     }
 
     if (avail > 0 && avail < expected) {
+      // Der er data, men ikke nok til et komplet svar
       ESP_LOGW(TAG, "Partial Modbus response: %d/%d bytes", avail, expected);
     }
 
-    delay(1);  // ✅ Giver CPU-tid til WiFi og ESPHome API
+    // Giv CPU-tid til andre tasks (WiFi, API, etc.)
+    delay(1);
   }
 
   ESP_LOGW(TAG, "Timeout waiting for Modbus response reg=0x%04X", reg);
@@ -281,7 +293,6 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
 // ============================================================================
 //  Standard Modbus CRC16 (LSB-first).
 // ============================================================================
-
 uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
   uint16_t crc = 0xFFFF;
 
