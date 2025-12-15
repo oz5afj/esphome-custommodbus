@@ -18,25 +18,27 @@ PLATFORM_SCHEMA = sensor.sensor_schema().extend(
 ).extend(uart.UART_DEVICE_SCHEMA)
 
 DATA_TYPE_MAP = {
-    "uint16": 0,
-    "int16": 1,
-    "uint32": 2,
-    "uint32_r": 3,
+    "uint16": "TYPE_UINT16",
+    "int16": "TYPE_INT16",
+    "uint32": "TYPE_UINT32",
+    "uint32_r": "TYPE_UINT32_R",
 }
+
 
 async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     sens = await sensor.new_sensor(config)
 
-    data_type = DATA_TYPE_MAP.get(config["data_type"], 0)
+    # Map string → enum symbol
+    data_type = DATA_TYPE_MAP.get(config["data_type"], "TYPE_UINT16")
 
-    cg.add(parent.set_slave_id(config["slave_id"]))
     cg.add(parent.add_read_sensor(
         config["register"],
         config["count"],
-        data_type,
+        custommodbus_ns.enum(data_type),
         config["scale"],
         sens
     ))
+
 
 CONFIG_SCHEMA = PLATFORM_SCHEMA
