@@ -1,25 +1,14 @@
 #
-#  CustomModbus – Sensor platform
-#
-#  Denne fil definerer YAML‑integration for:
-#
-#      sensor:
-#        - platform: custommodbus
-#          register: 0
-#          count: 1
-#          data_type: uint16
-#          scale: 0.1
-#
-#  ESPHome 2025 fjernede flere konstanter fra esphome.const,
-#  så vi definerer dem selv her.
+#  CustomModbus – Sensor platform (ESPHome 2025+ kompatibel)
 #
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
+from esphome.components import uart  # ✅ NYT: UARTDevice findes her nu
 
 # ---------------------------------------------------------------------------
-#  DEFINÉR EGNE KONSTANTER (ESPHome har fjernet dem fra esphome.const)
+#  DEFINÉR EGNE KONSTANTER (ESPHome fjernede dem fra esphome.const)
 # ---------------------------------------------------------------------------
 CONF_REGISTER = "register"
 CONF_COUNT = "count"
@@ -31,7 +20,9 @@ CONF_SCALE = "scale"
 # ---------------------------------------------------------------------------
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 
-CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, cg.UARTDevice)
+# ✅ RIGTIG måde at arve UARTDevice i ESPHome 2025+
+CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
+
 DataType = custommodbus_ns.enum("DataType")
 
 # ---------------------------------------------------------------------------
@@ -84,7 +75,6 @@ async def to_code(config):
     data_type = DATA_TYPE_MAP[config[CONF_DATA_TYPE]]
 
     # Registrér læsningen i CustomModbus
-    # (ingen Modbus‑trafik sker her – kun registrering)
     cg.add(
         parent.add_read_sensor(
             config[CONF_REGISTER],
