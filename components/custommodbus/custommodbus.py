@@ -5,6 +5,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart
+from esphome.const import CONF_ID
 
 # C++ namespace
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
@@ -18,7 +19,7 @@ CONF_UART_ID = "uart_id"
 
 CONFIG_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(): cv.declare_id(CustomModbus),
+        cv.GenerateID(CONF_ID): cv.declare_id(CustomModbus),
 
         # Reference til UART komponent
         cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
@@ -30,7 +31,7 @@ CONFIG_SCHEMA = cv.Schema(
 
 async def to_code(config):
     # Opret C++ objekt
-    var = cg.new_Pvariable(config[cv.GenerateID()])
+    var = cg.new_Pvariable(config[CONF_ID])
 
     # Bind UART
     uart_component = await cg.get_variable(config[CONF_UART_ID])
