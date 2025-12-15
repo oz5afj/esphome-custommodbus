@@ -35,7 +35,7 @@ async def to_code(config):
 
     # Bind UART
     uart_component = await cg.get_variable(config[CONF_UART_ID])
-    cg.add(var.set_parent(uart_component))
+    cg.add(var.set_uart_parent(uart_component))
 
     # Sæt slave ID
     cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
