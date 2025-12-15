@@ -28,17 +28,11 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_SLAVE_ID): cv.uint8_t,
     }
 )
-
 async def to_code(config):
-    # Opret C++ objekt
     var = cg.new_Pvariable(config[CONF_ID])
-
-    # Bind UART
-    uart_component = await cg.get_variable(config[CONF_UART_ID])
+    uart_component = await cg.get_variable(config["uart_id"])
+    # Bind UART korrekt til C++ klassen
     cg.add(var.set_uart_parent(uart_component))
-
-    # Sæt slave ID
-    cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
-
-    # Registrér komponenten i ESPHome
+    # Sæt slave id (hvis din C++ klasse har denne metode)
+    cg.add(var.set_slave_id(config["slave_id"]))
     await cg.register_component(var, config)
