@@ -1,7 +1,6 @@
 #include "custommodbus.h"
 
-// Kun sensor header inkluderes her — binary/text er midlertidigt udeladt
-#include "esphome/components/sensor/sensor.h"
+// Platform headers til fuld definition i .cpp
 #include "esphome/core/log.h"
 
 namespace esphome {
@@ -9,37 +8,20 @@ namespace custommodbus {
 
 static const char *const TAG = "custommodbus";
 
-namespace esphome {
-namespace custommodbus {
-
-static const char *const TAG = "custommodbus";
-
 //
-// ============================================================================
-//  SETUP
-// ============================================================================
-//  Kører én gang efter boot. Her logger vi, at komponenten er sat op.
-//  Ingen Modbus-trafik her.
-// ============================================================================
+// SETUP
+//
 void CustomModbus::setup() {
   ESP_LOGCONFIG(TAG, "Setting up CustomModbus with slave ID %u", this->slave_id_);
 }
 
 //
-// ============================================================================
-//  LOOP
-// ============================================================================
-//  ESPHome kalder loop() ofte. Vi må ALDRIG lave tungt eller blokkerende arbejde.
-//  Vi gør derfor:
-//    - Kun én iteration hver 200 ms
-//    - process_writes() håndterer max én write ad gangen
-//    - process_reads() håndterer KUN én read per loop (round-robin)
-// ============================================================================
+// LOOP
+//
 void CustomModbus::loop() {
   static uint32_t last = 0;
   const uint32_t now = millis();
 
-  // Begræns polling til hver 200 ms
   if (now - last < 200)
     return;
 
@@ -50,14 +32,8 @@ void CustomModbus::loop() {
 }
 
 //
-// ============================================================================
-//  REGISTRERING AF READS
-// ============================================================================
-//  Disse funktioner kaldes under konfiguration (fra Python/YAML) for at
-//  oprette ReadItem og lægge dem i reads_-vektoren.
-//  De laver IKKE Modbus-opkald selv.
-// ============================================================================
-
+// REGISTRERING AF READS
+//
 void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
                                    float scale, sensor::Sensor *s) {
   ReadItem item{};
@@ -100,13 +76,8 @@ void CustomModbus::add_text_sensor(uint16_t reg, text_sensor::TextSensor *ts) {
 }
 
 //
-// ============================================================================
-//  QUEUE WRITES
-// ============================================================================
-//  Disse funktioner tilføjer bare WriteItems til køen.
-//  Selve Modbus‑sende‑logikken ligger i process_writes().
-// ============================================================================
-
+// QUEUE WRITES
+//
 void CustomModbus::write_single(uint16_t reg, uint16_t value) {
   WriteItem w{};
   w.reg = reg;
@@ -126,41 +97,28 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
 }
 
 //
-// ============================================================================
-//  PROCESS READS  (Round-robin, én sensor per loop)
-// ============================================================================
-//  Tidligere var her et for-loop over ALLE reads_ → kunne blokere længe.
+// PROCESS READS
 //
-//  Nu:
-//    - static index holder styr på hvor vi er i listen
-//    - hver loop() kaldes kun én ReadItem
-//    - API og WiFi får masser af CPU-tid
-// ============================================================================
 void CustomModbus::process_reads() {
   static size_t index = 0;
 
   if (this->reads_.empty())
     return;
 
-  // Wrap index hvis vi når slutningen
   if (index >= this->reads_.size())
     index = 0;
 
-  // Vælg næste ReadItem i round-robin
   auto &r = this->reads_[index];
   index++;
 
   uint8_t resp[64]{0};
   uint8_t resp_len = 0;
 
-  // Kald read_registers() (non-blocking i tid og CPU)
   if (!this->read_registers(r.reg, r.count, resp, resp_len))
-    return;  // Timeout eller fejl, vi logger i read_registers()
+    return;
 
-  // Udpak 16-bit værdi (første register)
   const uint16_t raw16 = (resp[3] << 8) | resp[4];
 
-  // Udpak 32-bit, hvis der er to registre
   uint32_t raw32 = 0;
   if (r.count == 2) {
     raw32 = (static_cast<uint32_t>(resp[3]) << 24) |
@@ -169,7 +127,6 @@ void CustomModbus::process_reads() {
             static_cast<uint32_t>(resp[6]);
   }
 
-  // FLOAT SENSOR
   if (r.sensor != nullptr) {
     float value = 0.0f;
 
@@ -192,13 +149,11 @@ void CustomModbus::process_reads() {
     r.sensor->publish_state(value);
   }
 
-  // BINARY SENSOR
   if (r.binary_sensor != nullptr) {
     const bool state = (raw16 & r.bitmask) != 0;
     r.binary_sensor->publish_state(state);
   }
 
-  // TEXT SENSOR
   if (r.text_sensor != nullptr) {
     char buf[16];
     snprintf(buf, sizeof(buf), "%04X", raw16);
@@ -207,12 +162,8 @@ void CustomModbus::process_reads() {
 }
 
 //
-// ============================================================================
-//  PROCESS WRITES
-// ============================================================================
-//  Sender én Modbus "Write Single Register" per loop.
-//  Blocking her er minimal og påvirker ikke ESPHome API væsentligt.
-// ============================================================================
+// PROCESS WRITES
+//
 void CustomModbus::process_writes() {
   if (this->writes_.empty())
     return;
@@ -227,7 +178,6 @@ void CustomModbus::process_writes() {
   frame[3] = w.reg & 0xFF;
 
   uint16_t val = w.value;
-  // På sigt kan du lave "read-modify-write" her, hvis use_mask = true
 
   frame[4] = (val >> 8) & 0xFF;
   frame[5] = val & 0xFF;
@@ -236,22 +186,14 @@ void CustomModbus::process_writes() {
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
+  // Brug UARTDevice's write_array/flush som er tilgængelige via UARTDevice base
   this->write_array(frame, 8);
   this->flush();
 }
 
 //
-// ============================================================================
-//  READ REGISTERS (Non-blocking, med delay(1))
-// ============================================================================
-//  Sender en Modbus "Read Holding Registers (0x03)" forespørgsel og
-//  venter op til 200 ms på svar.
+// READ REGISTERS
 //
-//  VIGTIGT:
-//    - Vi bruger while(millis - start < 200) + delay(1)
-//    - Ingen stram while(available() < expected)-loop
-//    - Giver CPU-tid til WiFi og ESPHome API
-// ============================================================================
 bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len) {
   uint8_t frame[8];
   frame[0] = this->slave_id_;
@@ -265,7 +207,6 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-  // Send forespørgsel
   this->write_array(frame, 8);
   this->flush();
 
@@ -276,18 +217,15 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
     int avail = this->available();
 
     if (avail >= expected) {
-      // Vi har nok bytes, læs hele svaret
       this->read_array(resp, expected);
       resp_len = expected;
       return true;
     }
 
     if (avail > 0 && avail < expected) {
-      // Der er data, men ikke nok til et komplet svar
       ESP_LOGW(TAG, "Partial Modbus response: %d/%d bytes", avail, expected);
     }
 
-    // Giv CPU-tid til andre tasks (WiFi, API, etc.)
     delay(1);
   }
 
@@ -296,11 +234,8 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
 }
 
 //
-// ============================================================================
-//  CRC16
-// ============================================================================
-//  Standard Modbus CRC16 (LSB-first).
-// ============================================================================
+// CRC16
+//
 uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
   uint16_t crc = 0xFFFF;
 
@@ -320,5 +255,3 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
-
