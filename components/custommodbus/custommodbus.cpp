@@ -50,6 +50,12 @@ void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
   this->reads_.push_back(item);
 }
 
+// Wrapper overload: accepterer tal fra auto-genereret main.cpp og caster til DataType
+void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, sensor::Sensor *s) {
+  DataType dtype = static_cast<DataType>(type_as_int);
+  this->add_read_sensor(reg, count, dtype, scale, s);
+}
+
 // Binary/text registration midlertidigt deaktiveret
 #if 0
 void CustomModbus::add_binary_sensor(uint16_t reg, uint16_t mask,
@@ -263,3 +269,4 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
