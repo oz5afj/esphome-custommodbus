@@ -4,11 +4,12 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
 
-// Forward declarations for binary/text sensors to avoid requiring their headers here
+// Forward declarations
 namespace esphome {
 namespace binary_sensor { class BinarySensor; }
 namespace text_sensor { class TextSensor; }
 }  // namespace esphome
+
 
 namespace esphome {
 namespace custommodbus {
@@ -70,4 +71,5 @@ class CustomModbus : public Component, public UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
