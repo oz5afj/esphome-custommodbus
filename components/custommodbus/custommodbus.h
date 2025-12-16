@@ -48,7 +48,8 @@ class CustomModbus : public Component, public uart::UARTDevice {
   void set_slave_id(uint8_t id) { this->slave_id_ = id; }
 
   // API som Python kalder
-  void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
+#  void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
+  void add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, esphome::sensor::Sensor *s);
   void add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binary_sensor::BinarySensor *bs);
   void add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts);
 
@@ -75,4 +76,5 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
