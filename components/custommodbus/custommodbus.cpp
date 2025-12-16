@@ -1,17 +1,12 @@
 #include "custommodbus.h"
 
-// Inkluder kun de fulde platform-headers i .cpp hvis de findes i build-stien.
-// Fjern direkte include af binary_sensor hvis den ikke findes i din build.
+// Kun nødvendige platform-headers her
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/core/log.h"
 
-
-
 namespace esphome {
 namespace custommodbus {
 
-namespace esphome {
-namespace custommodbus {
 
 static const char *const TAG = "custommodbus";
 
@@ -262,5 +257,6 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
