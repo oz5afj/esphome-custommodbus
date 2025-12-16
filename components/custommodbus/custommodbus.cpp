@@ -1,14 +1,11 @@
 #include "custommodbus.h"
 
-// Inkluder fulde platform-headers i .cpp så publish_state() og Binary/Text typer er kendt
+// Kun nødvendige platform-headers her
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/binary_sensor/binary_sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
 namespace custommodbus {
-
 
 static const char *const TAG = "custommodbus";
 
@@ -46,12 +43,15 @@ void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
   item.type = type;
   item.scale = scale;
   item.sensor = s;
+  // binary/text support midlertidigt deaktiveret
   item.binary_sensor = nullptr;
   item.text_sensor = nullptr;
   item.bitmask = 0;
   this->reads_.push_back(item);
 }
 
+// Binary/text registration midlertidigt deaktiveret
+#if 0
 void CustomModbus::add_binary_sensor(uint16_t reg, uint16_t mask,
                                      binary_sensor::BinarySensor *bs) {
   ReadItem item{};
@@ -78,6 +78,7 @@ void CustomModbus::add_text_sensor(uint16_t reg, text_sensor::TextSensor *ts) {
   item.bitmask = 0;
   this->reads_.push_back(item);
 }
+#endif
 
 //
 // QUEUE WRITES
@@ -153,6 +154,8 @@ void CustomModbus::process_reads() {
     r.sensor->publish_state(value);
   }
 
+  // Binary/text publishing midlertidigt deaktiveret
+#if 0
   if (r.binary_sensor != nullptr) {
     const bool state = (raw16 & r.bitmask) != 0;
     r.binary_sensor->publish_state(state);
@@ -163,6 +166,7 @@ void CustomModbus::process_reads() {
     snprintf(buf, sizeof(buf), "%04X", raw16);
     r.text_sensor->publish_state(buf);
   }
+#endif
 }
 
 //
@@ -190,7 +194,7 @@ void CustomModbus::process_writes() {
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-  // Brug UARTDevice's write_array/flush som er tilgængelige via UARTDevice base
+  // Skriv til UART (kræver at headeren arver uart::UARTDevice)
   this->write_array(frame, 8);
   this->flush();
 }
@@ -259,7 +263,3 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
-
-
-
