@@ -2,25 +2,14 @@
 
 #include "esphome.h"
 #include "esphome/components/uart/uart.h"
+#include "esphome/components/sensor/sensor.h"
 
-// Forward declarations for platform types to avoid direct includes in header
-namespace esphome {
-namespace sensor {
-class Sensor;
-}  // namespace sensor
-
-namespace binary_sensor {
-class BinarySensor;
-}  // namespace binary_sensor
-
-namespace text_sensor {
-class TextSensor;
-}  // namespace text_sensor
-}  // namespace esphome
+// NOTE: binary_sensor and text_sensor support temporarily removed to avoid missing-header build errors.
 
 namespace esphome {
 namespace custommodbus {
 
+// DataType enum (skal matche hvad sensor.py sender)
 enum DataType : uint8_t {
   TYPE_UINT16 = 0,
   TYPE_INT16 = 1,
@@ -34,8 +23,7 @@ struct ReadItem {
   DataType type;
   float scale;
   esphome::sensor::Sensor *sensor;
-  esphome::binary_sensor::BinarySensor *binary_sensor;
-  esphome::text_sensor::TextSensor *text_sensor;
+  // binary/text sensors removed for now
   uint16_t bitmask;
 };
 
@@ -53,10 +41,10 @@ class CustomModbus : public Component, public UARTDevice {
   void set_uart_parent(UARTComponent *parent) { this->uart_parent_ = parent; }
   void set_slave_id(uint8_t id) { this->slave_id_ = id; }
 
+  // Kun float sensors for nu
   void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
-  void add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binary_sensor::BinarySensor *bs);
-  void add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts);
 
+  // Write API
   void write_single(uint16_t reg, uint16_t value);
   void write_bitmask(uint16_t reg, uint16_t mask, bool state);
 
