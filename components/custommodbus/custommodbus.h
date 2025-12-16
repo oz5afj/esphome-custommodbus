@@ -45,11 +45,13 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 
     // Binding fra Python: gem parent og sæt den også i UARTDevice base
-  void set_uart_parent(uart::UARTComponent *parent) {
+void set_uart_parent(uart::UARTComponent *parent) { this->uart_parent_ = parent; }
+
+/*  void set_uart_parent(uart::UARTComponent *parent) {
     this->uart_parent_ = parent;
     // Videregiv parent til uart::UARTDevice base, så write_array/available/read_array virker
     uart::UARTDevice::set_parent(parent);
-  }
+  }*/
 
   void set_slave_id(uint8_t id) { this->slave_id_ = id; }
 
@@ -83,6 +85,7 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
