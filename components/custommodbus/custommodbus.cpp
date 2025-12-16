@@ -200,9 +200,14 @@ void CustomModbus::process_writes() {
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-  // Skriv til UART (kræver at headeren arver uart::UARTDevice)
+   // Skriv til UART (kræver at set_uart_parent er kaldt)
+  if (this->uart_parent_ == nullptr) {
+    ESP_LOGW(TAG, "UART parent not set; skipping write_single reg=0x%04X", w.reg);
+    return;
+  }
   this->write_array(frame, 8);
   this->flush();
+
 }
 
 //
@@ -269,4 +274,5 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
