@@ -3,6 +3,7 @@
 #include "esphome.h"
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
+#include <vector>
 
 // Forward declarations for binary/text sensors to avoid requiring their headers here
 namespace esphome {
@@ -43,17 +44,15 @@ class CustomModbus : public Component, public uart::UARTDevice {
  public:
   CustomModbus() = default;
 
-
-    // Binding fra Python: gem parent og sæt den også i UARTDevice base
-void set_uart_parent(uart::UARTComponent *parent) { this->uart_parent_ = parent; }
-
-
+  // Binding fra Python: ESPHome genererer kaldet set_uart_parent
+  void set_uart_parent(uart::UARTComponent *parent) { this->uart_parent_ = parent; }
   void set_slave_id(uint8_t id) { this->slave_id_ = id; }
 
-  
   // API som Python kalder
   void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
+  // Overload for bagudkompatibilitet med auto-genereret main.cpp (sender et tal for data_type)
   void add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, esphome::sensor::Sensor *s);
+
   void add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binary_sensor::BinarySensor *bs);
   void add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts);
 
@@ -70,7 +69,7 @@ void set_uart_parent(uart::UARTComponent *parent) { this->uart_parent_ = parent;
   bool read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len);
   uint16_t crc16(uint8_t *buf, uint8_t len);
 
-  // uart::UARTComponent pointer type
+  // uart::UARTComponent pointer type (sættes af ESPHome via set_uart_parent)
   uart::UARTComponent *uart_parent_{nullptr};
   uint8_t slave_id_{1};
 
@@ -80,9 +79,3 @@ void set_uart_parent(uart::UARTComponent *parent) { this->uart_parent_ = parent;
 
 }  // namespace custommodbus
 }  // namespace esphome
-
-
-
-
-
-
