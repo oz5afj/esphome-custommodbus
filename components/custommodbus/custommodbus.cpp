@@ -246,7 +246,8 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
     int avail = this->available();
 
     if (avail >= expected) {
-       this->uart_parent_->read_array(resp, expected);  # this->read_array(resp, expected);
+       this->uart_parent_->read_array(resp, expected);  // this->read_array(resp, expected);
+  
       resp_len = expected;
       return true;
     }
@@ -284,6 +285,7 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
