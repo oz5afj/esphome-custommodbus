@@ -1,20 +1,10 @@
 #pragma once
+
 #include "esphome.h"
-
-// Forward declarations for platform types to avoid direct includes
-namespace esphome {
-namespace sensor {
-class Sensor;
-}  // namespace sensor
-
-namespace binary_sensor {
-class BinarySensor;
-}  // namespace binary_sensor
-
-namespace text_sensor {
-class TextSensor;
-}  // namespace text_sensor
-}  // namespace esphome
+#include "esphome/components/uart/uart.h"
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 
 namespace esphome {
 namespace custommodbus {
