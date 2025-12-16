@@ -1,7 +1,13 @@
 #include "custommodbus.h"
 
-// Platform headers til fuld definition i .cpp
+// Inkluder fulde platform-headers i .cpp så publish_state() og Binary/Text typer er kendt
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/log.h"
+
+namespace esphome {
+namespace custommodbus {
 
 namespace esphome {
 namespace custommodbus {
@@ -255,3 +261,4 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
