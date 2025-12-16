@@ -205,8 +205,13 @@ void CustomModbus::process_writes() {
     ESP_LOGW(TAG, "UART parent not set; skipping write_single reg=0x%04X", w.reg);
     return;
   }
-  this->write_array(frame, 8);
-  this->flush();
+    // Skriv til UART (kræver at set_uart_parent er kaldt)
+  if (this->uart_parent_ == nullptr) {
+    ESP_LOGW(TAG, "UART parent not set; skipping write_single reg=0x%04X", w.reg);
+    return;
+  }
+  
+
 
 }
 
@@ -226,8 +231,14 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
+    if (this->uart_parent_ == nullptr) {
+    ESP_LOGW(TAG, "UART parent not set; cannot read registers reg=0x%04X", reg);
+    return false;
+  }
+
   this->write_array(frame, 8);
   this->flush();
+
 
   const uint32_t start = millis();
   const uint8_t expected = static_cast<uint8_t>(5 + count * 2);
@@ -274,5 +285,6 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
