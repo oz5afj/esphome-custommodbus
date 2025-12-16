@@ -1,10 +1,11 @@
 #include "custommodbus.h"
 
-// Inkluder fulde platform-headers i .cpp så publish_state() og Binary/Text typer er kendt
+// Inkluder kun de fulde platform-headers i .cpp hvis de findes i build-stien.
+// Fjern direkte include af binary_sensor hvis den ikke findes i din build.
 #include "esphome/components/sensor/sensor.h"
-#include "esphome/components/binary_sensor/binary_sensor.h"
-#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/log.h"
+
+
 
 namespace esphome {
 namespace custommodbus {
@@ -261,4 +262,5 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
