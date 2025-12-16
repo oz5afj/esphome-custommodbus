@@ -6,12 +6,8 @@
 
 // Forward declarations for binary/text sensors to avoid requiring their headers here
 namespace esphome {
-namespace binary_sensor {
-class BinarySensor;
-}
-namespace text_sensor {
-class TextSensor;
-}
+namespace binary_sensor { class BinarySensor; }
+namespace text_sensor { class TextSensor; }
 }  // namespace esphome
 
 namespace esphome {
@@ -74,3 +70,4 @@ class CustomModbus : public Component, public UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
