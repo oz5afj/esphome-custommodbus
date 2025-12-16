@@ -1,8 +1,8 @@
 #include "custommodbus.h"
 
-// Kun nødvendige platform-headers her
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/core/log.h"
+#include <cstdio>
 
 namespace esphome {
 namespace custommodbus {
@@ -43,7 +43,7 @@ void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
   item.type = type;
   item.scale = scale;
   item.sensor = s;
-  // binary/text support midlertidigt deaktiveret
+  // binary/text support midlertidigt deaktiveret i denne build
   item.binary_sensor = nullptr;
   item.text_sensor = nullptr;
   item.bitmask = 0;
@@ -200,18 +200,13 @@ void CustomModbus::process_writes() {
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-  
-   // Skriv til UART via uart_parent_
+  // Skriv til UART via uart_parent_
   if (this->uart_parent_ == nullptr) {
     ESP_LOGW(TAG, "UART parent not set; skipping write_single reg=0x%04X", w.reg);
     return;
   }
   this->uart_parent_->write_array(frame, 8);
   this->uart_parent_->flush();
-
-  
-
-
 }
 
 //
@@ -230,24 +225,22 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-    if (this->uart_parent_ == nullptr) {
+  if (this->uart_parent_ == nullptr) {
     ESP_LOGW(TAG, "UART parent not set; cannot read registers reg=0x%04X", reg);
     return false;
   }
 
-  this->write_array(frame, 8);
-  this->flush();
-
+  this->uart_parent_->write_array(frame, 8);
+  this->uart_parent_->flush();
 
   const uint32_t start = millis();
   const uint8_t expected = static_cast<uint8_t>(5 + count * 2);
 
   while (millis() - start < 200) {
-    int avail = this->available();
+    int avail = this->uart_parent_->available();
 
     if (avail >= expected) {
-       this->uart_parent_->read_array(resp, expected);  // this->read_array(resp, expected);
-  
+      this->uart_parent_->read_array(resp, expected);
       resp_len = expected;
       return true;
     }
@@ -285,9 +278,3 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
-
-
-
-
-
