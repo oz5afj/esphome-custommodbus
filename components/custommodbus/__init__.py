@@ -32,6 +32,7 @@ CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_GROUPS): cv.ensure_list(GROUP_SCHEMA),
 }, extra=cv.ALLOW_EXTRA)
 
+
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     uart_comp = await cg.get_variable(config[CONF_UART_ID])
@@ -42,12 +43,15 @@ async def to_code(config):
     # Opret grupper og reads
     for g in config[CONF_GROUPS]:
         group_name = g['name']
-        interval_ms = int(g['interval'])
+        # hent millisekunder fra TimePeriodMilliseconds objektet
+        # (TimePeriodMilliseconds har attributten total_milliseconds)
+        interval_ms = int(g['interval'].total_milliseconds)
         cg.add(var.add_group(group_name, interval_ms))
+
         for r in g['reads']:
             # Opret en ESPHome sensor og registrer den
             sens = sensor.new_sensor(r[CONF_NAME])
             await sensor.register_sensor(sens, r[CONF_NAME])
-            # Tilføj read til gruppen (smoothing_alpha er valgfri)
             alpha = float(r.get('smoothing_alpha', 0.0))
+            # Tilføj read til gruppen
             cg.add(var.add_read_to_group(group_name, r['reg'], r['count'], sens, alpha))
