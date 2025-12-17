@@ -11,9 +11,12 @@ namespace custommodbus {
 
 static const char *const TAG = "custommodbus";
 
-// Definér DE pin her (ændr til den GPIO du bruger)
+// Uncomment to enable manual DE/RE control and set DE_PIN accordingly
+// #define MANUAL_DE
+#ifdef MANUAL_DE
 #ifndef DE_PIN
 #define DE_PIN 4
+#endif
 #endif
 
 //
@@ -23,33 +26,47 @@ void CustomModbus::setup() {
   ESP_LOGCONFIG(TAG, "Setting up CustomModbus with slave ID %u", this->slave_id_);
   ESP_LOGI(TAG, "uart_parent_ pointer: %p", this->uart_parent_);
 
-  // Initialiser asynkrone read‑state medlemmer
+  // Ensure the three GPIOs required by your hardware are set HIGH
+  // (user requested pins 16, 17 and 19 must be HIGH for the board to function)
+  pinMode(16, OUTPUT);
+  digitalWrite(16, HIGH);
+  pinMode(17, OUTPUT);
+  digitalWrite(17, HIGH);
+  pinMode(19, OUTPUT);
+  digitalWrite(19, HIGH);
+
+  // Initialize async read state
   this->read_state_ = IDLE;
   this->read_start_ms_ = 0;
   this->read_expected_ = 0;
   this->read_got_ = 0;
   this->read_index_ = 0;
 
-  // DE pin init (hvis du bruger manuel DE/RE styring)
+  // Default timeout and buffer
+  this->read_timeout_ms_ = 2000; // 2s timeout (inverter may be slow)
+  memset(this->read_buf_, 0, sizeof(this->read_buf_));
+
+#ifdef MANUAL_DE
   pinMode(DE_PIN, OUTPUT);
   digitalWrite(DE_PIN, LOW);  // default RX
+#endif
 }
 
 //
-// LOOP (ikke-blokerende state maskine for reads)
+// LOOP (non-blocking state machine for reads)
 //
 void CustomModbus::loop() {
   static uint32_t last = 0;
   const uint32_t now = millis();
 
-  // Poll interval (ms). Sæt til 1000-2000 for langsomme invertere.
-  const uint32_t interval = 1500;
+  // Poll interval (ms). Use 1-2s for slow inverters; default 2000ms here.
+  const uint32_t interval = 2000;
 
   if (now - last >= interval) {
     last = now;
     this->process_writes();
 
-    // Start en ny read kun hvis IDLE og der er reads
+    // Start a new read only if IDLE and there are reads registered
     if (this->read_state_ == IDLE && !this->reads_.empty()) {
       if (this->read_index_ >= this->reads_.size())
         this->read_index_ = 0;
@@ -58,12 +75,12 @@ void CustomModbus::loop() {
     }
   }
 
-  // Håndter read state hver loop (ikke-blokerende)
+  // Handle read state each loop (non-blocking)
   this->handle_read_state();
 }
 
 //
-// REGISTRERING AF READS
+// REGISTRATION OF READS
 //
 void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
                                    float scale, sensor::Sensor *s) {
@@ -79,7 +96,6 @@ void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type,
   this->reads_.push_back(item);
 }
 
-// Wrapper overload: accepterer tal fra auto-genereret main.cpp og caster til DataType
 void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, sensor::Sensor *s) {
   DataType dtype = static_cast<DataType>(type_as_int);
   this->add_read_sensor(reg, count, dtype, scale, s);
@@ -133,10 +149,9 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
 }
 
 //
-// PROCESS READS (bevares for kompatibilitet, men primært bruger state-maskinen)
+// PROCESS READS (kept for compatibility; main flow uses async state machine)
 //
 void CustomModbus::process_reads() {
-  // Beholdt for kompatibilitet; hovedflow er asynkront via start_read/handle_read_state.
   (void)0;
 }
 
@@ -169,27 +184,30 @@ void CustomModbus::process_writes() {
     return;
   }
 
-  // Tøm RX buffer før TX for at undgå gamle bytes/echo
+  // Flush RX buffer before TX to avoid old bytes/echo
   while (this->uart_parent_->available() > 0) {
     uint8_t tmp;
     this->uart_parent_->read_array(&tmp, 1);
   }
 
-  // Log TX frame (diagnostik)
+  // Log TX frame (diagnostic)
   ESP_LOGVV(TAG, "TX frame (write):");
   for (int i = 0; i < 8; ++i) ESP_LOGVV(TAG, " %02X", frame[i]);
 
-  // Hvis du bruger manuel DE/RE styring, enable TX
+#ifdef MANUAL_DE
   digitalWrite(DE_PIN, HIGH);
+#endif
   this->uart_parent_->write_array(frame, 8);
   this->uart_parent_->flush();
-  // Vent kort så TX kan fuldføres
-  delay(3);
+  // Wait a bit so TX is fully out and slave can start responding
+  delay(10);
+#ifdef MANUAL_DE
   digitalWrite(DE_PIN, LOW);
+#endif
 }
 
 //
-// READ REGISTERS (synkron fallback - beholdes men ikke brugt i hovedflow)
+// SYNCHRONOUS READ REGISTERS (fallback)
 //
 bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len) {
   uint8_t frame[8];
@@ -209,29 +227,32 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
     return false;
   }
 
-  // Tøm RX buffer før vi sender
+  // Flush RX buffer before sending
   while (this->uart_parent_->available() > 0) {
     uint8_t tmp;
     this->uart_parent_->read_array(&tmp, 1);
   }
 
-  // Log TX frame (diagnostik)
+  // Log TX frame (diagnostic)
   ESP_LOGVV(TAG, "TX frame (read):");
   for (int i = 0; i < 8; ++i) ESP_LOGVV(TAG, " %02X", frame[i]);
 
-  // Manuel DE/RE styring ved TX
+#ifdef MANUAL_DE
   digitalWrite(DE_PIN, HIGH);
+#endif
   this->uart_parent_->write_array(frame, 8);
   this->uart_parent_->flush();
-  delay(5);
+  delay(10);
+#ifdef MANUAL_DE
   digitalWrite(DE_PIN, LOW);
+#endif
 
   const uint32_t start = millis();
   const uint8_t expected = static_cast<uint8_t>(5 + count * 2);
   uint8_t buf[64];
   uint8_t got = 0;
 
-  while (millis() - start < 200) {
+  while (millis() - start < this->read_timeout_ms_) {
     int avail = this->uart_parent_->available();
     if (avail > 0) {
       int to_read = std::min(static_cast<int>(sizeof(buf) - got), avail);
@@ -239,19 +260,18 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
         this->uart_parent_->read_array(buf + got, to_read);
         got += to_read;
 
-        // Log rå bytes i hex (diagnostik)
         ESP_LOGVV(TAG, "RX raw (%d):", got);
         for (uint8_t i = 0; i < got; ++i) ESP_LOGVV(TAG, " %02X", buf[i]);
       }
     }
 
     if (got >= expected) {
-      // Valider slave id og function
+      // Validate slave id and function
       if (buf[0] != this->slave_id_ || buf[1] != 3) {
         ESP_LOGW(TAG, "Ignoring frame wrong slave/function %02X %02X", buf[0], buf[1]);
         return false;
       }
-      // Valider CRC (Modbus CRC: lav byte først)
+      // Validate CRC (Modbus CRC: low byte first)
       uint16_t recv_crc = (static_cast<uint16_t>(buf[expected - 1]) << 8) | buf[expected - 2];
       uint16_t calc_crc = this->crc16(buf, expected - 2);
       if (recv_crc != calc_crc) {
@@ -276,7 +296,7 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
 }
 
 //
-// ASYNKRON LÆSEFLOW: start_read + handle_read_state
+// ASYNC READ FLOW: start_read + handle_read_state
 //
 
 void CustomModbus::start_read(uint16_t reg, uint8_t count) {
@@ -293,7 +313,7 @@ void CustomModbus::start_read(uint16_t reg, uint8_t count) {
   frame[6] = crc & 0xFF;
   frame[7] = crc >> 8;
 
-  // Tøm RX før TX
+  // Flush RX before TX
   while (this->uart_parent_->available() > 0) {
     uint8_t tmp; this->uart_parent_->read_array(&tmp, 1);
   }
@@ -302,17 +322,20 @@ void CustomModbus::start_read(uint16_t reg, uint8_t count) {
   ESP_LOGVV(TAG, "TX frame (start_read):");
   for (int i = 0; i < 8; ++i) ESP_LOGVV(TAG, " %02X", frame[i]);
 
-  // Manuel DE/RE styring ved TX
+#ifdef MANUAL_DE
   digitalWrite(DE_PIN, HIGH);
+#endif
   this->uart_parent_->write_array(frame, 8);
   this->uart_parent_->flush();
-  // Vent kort så TX kan fuldføres
-  delay(3);
+  // Wait a bit so TX can finish and slave can start responding
+  delay(10);
+#ifdef MANUAL_DE
   digitalWrite(DE_PIN, LOW);
+#endif
 
-  // Gem metadata for asynkron læsning
+  // Save metadata for async read
   this->read_state_ = WAITING;
-  this->read_start_ms_ = millis();           // start timeout fra nu
+  this->read_start_ms_ = millis();
   this->read_expected_ = static_cast<uint8_t>(5 + count * 2);
   this->read_got_ = 0;
   this->read_reg_ = reg;
@@ -326,81 +349,118 @@ void CustomModbus::handle_read_state() {
 
   uint32_t now = millis();
 
-  // Læs hvad der er tilgængeligt (akkumuler)
+  // Accumulate available bytes
   int avail = this->uart_parent_->available();
   if (avail > 0) {
     int to_read = std::min(static_cast<int>(sizeof(this->read_buf_) - this->read_got_), avail);
     if (to_read > 0) {
       this->uart_parent_->read_array(this->read_buf_ + this->read_got_, to_read);
       this->read_got_ += to_read;
-
-      // Log rå bytes
-      ESP_LOGVV(TAG, "RX raw (%d):", this->read_got_);
-      for (uint8_t i = 0; i < this->read_got_; ++i) ESP_LOGVV(TAG, " %02X", this->read_buf_[i]);
     }
   }
 
-  // Hvis vi har nok bytes, valider og processér
-  if (this->read_got_ >= this->read_expected_) {
-    uint8_t *buf = this->read_buf_;
-    uint8_t expected = this->read_expected_;
-
-    // Slave id + function
-    if (buf[0] != this->slave_id_ || buf[1] != 3) {
-      ESP_LOGW(TAG, "Ignoring frame wrong slave/function %02X %02X", buf[0], buf[1]);
-      this->read_state_ = IDLE;
-      return;
-    }
-
-    // CRC (Modbus: low byte first)
-    uint16_t recv_crc = (static_cast<uint16_t>(buf[expected - 1]) << 8) | buf[expected - 2];
-    uint16_t calc_crc = this->crc16(buf, expected - 2);
-    if (recv_crc != calc_crc) {
-      ESP_LOGW(TAG, "Ignoring frame CRC mismatch got %04X calc %04X", recv_crc, calc_crc);
-      this->read_state_ = IDLE;
-      return;
-    }
-
-    // Kopier til lokal resp og publicér til matchende read item
-    uint8_t resp[64]; uint8_t resp_len = expected;
-    memcpy(resp, buf, expected);
-
-    // Find read item med reg == read_reg_ og count == read_count_
-    for (auto &r : this->reads_) {
-      if (r.reg == this->read_reg_ && r.count == this->read_count_) {
-        const uint16_t raw16 = (static_cast<uint16_t>(resp[3]) << 8) | resp[4];
-        uint32_t raw32 = 0;
-        if (r.count == 2 && resp_len >= 7) {
-          raw32 = (static_cast<uint32_t>(resp[3]) << 24) |
-                  (static_cast<uint32_t>(resp[4]) << 16) |
-                  (static_cast<uint32_t>(resp[5]) << 8) |
-                  static_cast<uint32_t>(resp[6]);
-        }
-
-        if (r.sensor != nullptr) {
-          float value = 0.0f;
-          switch (r.type) {
-            case TYPE_UINT16: value = static_cast<float>(raw16); break;
-            case TYPE_INT16: value = static_cast<float>(static_cast<int16_t>(raw16)); break;
-            case TYPE_UINT32: value = static_cast<float>(raw32); break;
-            case TYPE_UINT32_R: value = static_cast<float>(__builtin_bswap32(raw32)); break;
-            default: value = static_cast<float>(raw16); break;
-          }
-          value *= r.scale;
-          r.sensor->publish_state(value);
-        }
+  // If we have any bytes, try to find a valid Modbus start (slave + function)
+  if (this->read_got_ > 1) {
+    int start = -1;
+    for (int i = 0; i + 1 < this->read_got_; ++i) {
+      if (this->read_buf_[i] == this->slave_id_ && this->read_buf_[i + 1] == 0x03) {
+        start = i;
         break;
       }
     }
 
-    this->read_state_ = IDLE;
-    return;
+    if (start < 0) {
+      // No valid start found yet. Prevent buffer overflow by keeping last bytes.
+      if (this->read_got_ > 48) {
+        // keep last 16 bytes
+        memmove(this->read_buf_, this->read_buf_ + this->read_got_ - 16, 16);
+        this->read_got_ = 16;
+      }
+      // Not enough to process yet
+      // Optionally log noisy data at lower verbosity
+      return;
+    }
+
+    // If start > 0, shift buffer so frame starts at index 0
+    if (start > 0) {
+      memmove(this->read_buf_, this->read_buf_ + start, this->read_got_ - start);
+      this->read_got_ -= start;
+    }
+
+    // Now check if we have expected bytes
+    if (this->read_got_ >= this->read_expected_) {
+      uint8_t *buf = this->read_buf_;
+      uint8_t expected = this->read_expected_;
+
+      // Validate slave id + function (should be true by search, but double-check)
+      if (buf[0] != this->slave_id_ || buf[1] != 3) {
+        ESP_LOGW(TAG, "Ignoring frame wrong slave/function %02X %02X", buf[0], buf[1]);
+        this->read_state_ = IDLE;
+        return;
+      }
+
+      // Validate CRC (Modbus: low byte first)
+      uint16_t recv_crc = (static_cast<uint16_t>(buf[expected - 1]) << 8) | buf[expected - 2];
+      uint16_t calc_crc = this->crc16(buf, expected - 2);
+      if (recv_crc != calc_crc) {
+        ESP_LOGW(TAG, "Ignoring frame CRC mismatch got %04X calc %04X", recv_crc, calc_crc);
+        // drop the first byte and try again next loop (resync)
+        memmove(this->read_buf_, this->read_buf_ + 1, --this->read_got_);
+        return;
+      }
+
+      // Copy to local resp and publish to matching read item
+      uint8_t resp[64];
+      uint8_t resp_len = expected;
+      memcpy(resp, buf, expected);
+
+      // Log the successful raw frame at verbose level
+      ESP_LOGVV(TAG, "RX raw (%d):", resp_len);
+      for (uint8_t i = 0; i < resp_len; ++i) ESP_LOGVV(TAG, " %02X", resp[i]);
+
+      // Find read item with matching reg and count
+      for (auto &r : this->reads_) {
+        if (r.reg == this->read_reg_ && r.count == this->read_count_) {
+          const uint16_t raw16 = (static_cast<uint16_t>(resp[3]) << 8) | resp[4];
+          uint32_t raw32 = 0;
+          if (r.count == 2 && resp_len >= 7) {
+            raw32 = (static_cast<uint32_t>(resp[3]) << 24) |
+                    (static_cast<uint32_t>(resp[4]) << 16) |
+                    (static_cast<uint32_t>(resp[5]) << 8) |
+                    static_cast<uint32_t>(resp[6]);
+          }
+
+          if (r.sensor != nullptr) {
+            float value = 0.0f;
+            switch (r.type) {
+              case TYPE_UINT16: value = static_cast<float>(raw16); break;
+              case TYPE_INT16: value = static_cast<float>(static_cast<int16_t>(raw16)); break;
+              case TYPE_UINT32: value = static_cast<float>(raw32); break;
+              case TYPE_UINT32_R: value = static_cast<float>(__builtin_bswap32(raw32)); break;
+              default: value = static_cast<float>(raw16); break;
+            }
+            value *= r.scale;
+            r.sensor->publish_state(value);
+          }
+          break;
+        }
+      }
+
+      // Reset state and clear buffer
+      this->read_state_ = IDLE;
+      this->read_got_ = 0;
+      memset(this->read_buf_, 0, sizeof(this->read_buf_));
+      return;
+    }
   }
 
-  // Timeout
+  // Timeout handling
   if (now - this->read_start_ms_ > this->read_timeout_ms_) {
     ESP_LOGW(TAG, "Timeout waiting for Modbus response reg=0x%04X", this->read_reg_);
+    // reset state and buffer
     this->read_state_ = IDLE;
+    this->read_got_ = 0;
+    memset(this->read_buf_, 0, sizeof(this->read_buf_));
     return;
   }
 }
@@ -427,4 +487,3 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
