@@ -1,4 +1,9 @@
- #include "custommodbus.h"
+#include "custommodbus.h"
+#include "esphome/core/log.h"
+
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/sensor/sensor.h"
 
 namespace esphome {
 namespace custommodbus {
@@ -385,3 +390,4 @@ void CustomModbus::process_writes() {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
