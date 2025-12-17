@@ -49,8 +49,9 @@ async def to_code(config):
 
         for r in g['reads']:
             # Opret en ESPHome sensor og registrer den
-            # sensor.new_sensor er en coroutine — derfor await her
-            sens = await sensor.new_sensor(r[CONF_NAME])
+            # sensor.new_sensor forventer et config dict, ikke en streng
+            sens_conf = {CONF_NAME: r[CONF_NAME]}
+            sens = await sensor.new_sensor(sens_conf)
             await sensor.register_sensor(sens, r[CONF_NAME])
             alpha = float(r.get('smoothing_alpha', 0.0))
             # Tilføj read til gruppen
