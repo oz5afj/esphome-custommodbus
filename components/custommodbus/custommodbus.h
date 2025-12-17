@@ -5,6 +5,20 @@
 #include "esphome/components/sensor/sensor.h"
 #include <vector>
 
+
+// --- tilføj i CustomModbus class (protected) ---
+enum ReadState { IDLE, WAITING, PROCESSING };
+ReadState read_state_{IDLE};
+uint32_t read_start_ms_{0};
+uint32_t read_timeout_ms_{1000}; // 1s timeout
+uint8_t read_expected_{0};
+uint8_t read_buf_[64];
+uint8_t read_got_{0};
+uint16_t read_reg_{0};
+uint8_t read_count_{0};
+size_t read_index_{0}; // rotation index for reads_
+
+
 // Forward declarations for binary/text sensors to avoid requiring their headers here
 namespace esphome {
 namespace binary_sensor { class BinarySensor; }
@@ -79,3 +93,4 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
