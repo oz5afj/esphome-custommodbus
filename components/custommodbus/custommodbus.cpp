@@ -11,18 +11,28 @@ namespace custommodbus {
 
 static const char *const TAG = "custommodbus";
 
+// Definér DE pin her (ændr til den GPIO du bruger)
+#ifndef DE_PIN
+#define DE_PIN 4
+#endif
+
 //
 // SETUP
 //
 void CustomModbus::setup() {
   ESP_LOGCONFIG(TAG, "Setting up CustomModbus with slave ID %u", this->slave_id_);
   ESP_LOGI(TAG, "uart_parent_ pointer: %p", this->uart_parent_);
-  // Ensure read state is idle on startup
+
+  // Initialiser asynkrone read‑state medlemmer
   this->read_state_ = IDLE;
   this->read_start_ms_ = 0;
   this->read_expected_ = 0;
   this->read_got_ = 0;
   this->read_index_ = 0;
+
+  // DE pin init (hvis du bruger manuel DE/RE styring)
+  pinMode(DE_PIN, OUTPUT);
+  digitalWrite(DE_PIN, LOW);  // default RX
 }
 
 //
@@ -75,7 +85,6 @@ void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_
   this->add_read_sensor(reg, count, dtype, scale, s);
 }
 
-// Binary/text registration midlertidigt deaktiveret i runtime; deklarationer beholdes for kompatibilitet
 void CustomModbus::add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binary_sensor::BinarySensor *bs) {
   ReadItem item{};
   item.reg = reg;
@@ -127,9 +136,7 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
 // PROCESS READS (bevares for kompatibilitet, men primært bruger state-maskinen)
 //
 void CustomModbus::process_reads() {
-  // Denne funktion er bevaret for bagudkompatibilitet, men den
-  // primære læseflow er nu asynkront via start_read/handle_read_state.
-  // Hvis du vil bruge synkrone reads, kan du beholde read_registers.
+  // Beholdt for kompatibilitet; hovedflow er asynkront via start_read/handle_read_state.
   (void)0;
 }
 
@@ -172,11 +179,13 @@ void CustomModbus::process_writes() {
   ESP_LOGVV(TAG, "TX frame (write):");
   for (int i = 0; i < 8; ++i) ESP_LOGVV(TAG, " %02X", frame[i]);
 
+  // Hvis du bruger manuel DE/RE styring, enable TX
+  digitalWrite(DE_PIN, HIGH);
   this->uart_parent_->write_array(frame, 8);
   this->uart_parent_->flush();
-
-  // Kort pause for at sikre at TX er sendt og slave kan begynde at svare
-  delay(2);
+  // Vent kort så TX kan fuldføres
+  delay(3);
+  digitalWrite(DE_PIN, LOW);
 }
 
 //
@@ -210,11 +219,12 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
   ESP_LOGVV(TAG, "TX frame (read):");
   for (int i = 0; i < 8; ++i) ESP_LOGVV(TAG, " %02X", frame[i]);
 
+  // Manuel DE/RE styring ved TX
+  digitalWrite(DE_PIN, HIGH);
   this->uart_parent_->write_array(frame, 8);
   this->uart_parent_->flush();
-
-  // Kort pause så slave/transceiver kan begynde at svare
   delay(5);
+  digitalWrite(DE_PIN, LOW);
 
   const uint32_t start = millis();
   const uint8_t expected = static_cast<uint8_t>(5 + count * 2);
@@ -292,12 +302,17 @@ void CustomModbus::start_read(uint16_t reg, uint8_t count) {
   ESP_LOGVV(TAG, "TX frame (start_read):");
   for (int i = 0; i < 8; ++i) ESP_LOGVV(TAG, " %02X", frame[i]);
 
+  // Manuel DE/RE styring ved TX
+  digitalWrite(DE_PIN, HIGH);
   this->uart_parent_->write_array(frame, 8);
   this->uart_parent_->flush();
+  // Vent kort så TX kan fuldføres
+  delay(3);
+  digitalWrite(DE_PIN, LOW);
 
   // Gem metadata for asynkron læsning
   this->read_state_ = WAITING;
-  this->read_start_ms_ = millis();
+  this->read_start_ms_ = millis();           // start timeout fra nu
   this->read_expected_ = static_cast<uint8_t>(5 + count * 2);
   this->read_got_ = 0;
   this->read_reg_ = reg;
@@ -412,3 +427,4 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
