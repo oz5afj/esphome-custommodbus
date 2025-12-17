@@ -1,8 +1,9 @@
 {
   "domain": "custommodbus",
-  "name": "Custom Modbus",
-  "version": "1.0",
-  "dependencies": ["uart"],
-  "codeowners": [],
-  "requirements": []
+  "name": "Custom Modbus Driver",
+  "version": "1.0.0",
+  "documentation": "https://github.com/oz5afj/esphome-custommodbus",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": ["@oz5afj"]
 }
