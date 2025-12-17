@@ -185,7 +185,7 @@ bool CustomModbus::validate_and_publish(ReadDef &rd, uint16_t raw_val) {
   uint32_t now = millis();
   float value = static_cast<float>(raw_val);
 
-  // Her kan du udvide med min/max/rate/delta checks. For nu: kun smoothing + basic sanity
+  // Basic sanity check: finite
   if (!std::isfinite(value)) {
     ESP_LOGW(TAG, "Non-finite value for reg %u", rd.reg);
     return false;
