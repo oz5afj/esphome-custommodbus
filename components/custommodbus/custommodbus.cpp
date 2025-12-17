@@ -1,218 +1,221 @@
-#include "custommodbus.h"
+// custommodbus.cpp
 #include "esphome.h"
+#include "custommodbus.h"
 
-#include "esphome/components/uart/uart.h"
+// Inkluder konkrete sensorklasser for at undgå incomplete-type fejl
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
-#include "esphome/core/log.h"
+#include "esphome/components/uart/uart.h"
 
 #include <algorithm>
 #include <vector>
+#include <cstring>
 
 namespace esphome {
 namespace custommodbus {
 
 static const char *TAG = "custommodbus";
 
-// --- Hjælpefunktioner ---
+// Helper: CRC16 (Modbus)
 static uint16_t modbus_crc16(const uint8_t *buf, size_t len) {
   uint16_t crc = 0xFFFF;
   for (size_t pos = 0; pos < len; pos++) {
     crc ^= (uint16_t)buf[pos];
-    for (int i = 8; i != 0; i--) {
-      if ((crc & 0x0001) != 0) {
+    for (int i = 0; i < 8; i++) {
+      if (crc & 0x0001) {
         crc >>= 1;
         crc ^= 0xA001;
-      } else
+      } else {
         crc >>= 1;
+      }
     }
   }
   return crc;
 }
 
-// --- CustomModbus implementation ---
-
+// --- Setup / constructor ---
 void CustomModbus::setup() {
-  ESP_LOGCONFIG(TAG, "Setting up CustomModbus");
-
-  // Sørg for at GPIO16, 17 og 19 er sat HIGH så boardet fungerer med dit hardware
-  // (Bruger Arduino-API direkte her; ESPHome wrapper kan også bruges hvis ønsket)
+  // Sørg for at GPIO16, 17 og 19 er sat som outputs og HIGH ved opstart
+  // (Nødvendigt for dit hardware som du skrev)
   pinMode(16, OUTPUT);
-  digitalWrite(16, HIGH);
-
   pinMode(17, OUTPUT);
-  digitalWrite(17, HIGH);
-
   pinMode(19, OUTPUT);
+  digitalWrite(16, HIGH);
+  digitalWrite(17, HIGH);
   digitalWrite(19, HIGH);
 
-  // Hvis du ønsker manuel DE-kontrol, kan du initialisere DE-pin her (valgfrit)
-  // pinMode(this->de_pin_, OUTPUT);
-  // digitalWrite(this->de_pin_, LOW); // default receive
+  // Init interne variabler (sikrer kendt starttilstand)
+  this->read_state_ = IDLE;
+  this->read_index_ = -1;  // starter før første element så process_reads() vælger index 0
+  this->read_got_ = 0;
+  this->read_expected_ = 0;
+  this->read_timeout_ms_ = 500;  // default timeout, kan overskrives fra header/yaml hvis ønsket
+
+  ESP_LOGI(TAG, "CustomModbus setup complete, pins 16/17/19 set HIGH");
 }
 
+// --- start_read: header-signatur start_read(uint16_t reg, uint8_t count) ---
 void CustomModbus::start_read(uint16_t reg, uint8_t count) {
-  // Denne signatur matcher headeren som build-loggen viste
-  // Forbered læse-kommando (funktion 0x03)
-  if (!this->uart_parent_) {
-    ESP_LOGW(TAG, "UART parent not set, cannot start read");
-    return;
-  }
+  // Gem parametre i medlemvariabler
+  this->read_reg_ = reg;
+  this->read_count_ = count;
+  this->read_expected_ = static_cast<int>(5 + count * 2); // slave + func + bytecount + data + crc_lo + crc_hi
+  this->read_got_ = 0;
+  this->read_state_ = WAITING;
+  this->read_start_ms_ = millis();
 
-  // Gem ønskede læseregistre i kø (reads_ er en vector af ReadItem defineret i header)
-  ReadItem item;
-  item.reg = reg;
-  item.count = count;
-  this->reads_.push_back(item);
+  // Byg Modbus RTU request (slave id fra medlemvariabel slave_id_)
+  uint8_t tx[8];
+  tx[0] = this->slave_id_;
+  tx[1] = 0x03; // Read Holding Registers
+  tx[2] = static_cast<uint8_t>((reg >> 8) & 0xFF);
+  tx[3] = static_cast<uint8_t>(reg & 0xFF);
+  tx[4] = 0x00;
+  tx[5] = count;
+  uint16_t crc = modbus_crc16(tx, 6);
+  tx[6] = crc & 0xFF;
+  tx[7] = (crc >> 8) & 0xFF;
+
+  // Send via UART. Vi antager auto-DE, så vi rører ikke DE-pin.
+  if (this->uart_parent_ != nullptr) {
+    this->uart_parent_->write_array(tx, 8);
+    this->uart_parent_->flush();
+    ESP_LOGVV(TAG, "TX frame (start_read):");
+    // Log hex bytes i en linje for debugging
+    {
+      char tmp[64];
+      int pos = 0;
+      for (int i = 0; i < 8; i++) pos += snprintf(tmp + pos, sizeof(tmp) - pos, " %02X", tx[i]);
+      ESP_LOGVV(TAG, "%s", tmp);
+    }
+  } else {
+    ESP_LOGW(TAG, "UART parent not configured, cannot send Modbus request");
+    this->read_state_ = IDLE;
+  }
 }
 
+// --- handle_read_state: kaldet fra loop() ---
 void CustomModbus::handle_read_state() {
-  // Denne funktion håndterer den interne state-maskine for læsning
-  // Forventede medlemvariabler (skal være deklareret i header):
-  // read_state_, read_start_ms_, read_expected_, read_got_, read_reg_, read_count_, read_buf_, read_index_, read_timeout_ms_
+  if (this->read_state_ == IDLE) return;
 
-  // Hvis der ikke er en aktiv læseoperation, returner
-  if (this->read_state_ == IDLE) {
+  if (this->uart_parent_ == nullptr) {
+    this->read_state_ = IDLE;
     return;
   }
 
-  // Hvis vi venter på svar, tjek UART buffer
-  if (this->read_state_ == WAITING) {
-    size_t avail = this->uart_parent_->available();
-    if (avail > 0) {
-      int to_read = std::min(static_cast<int>(sizeof(this->read_buf_) - this->read_got_), static_cast<int>(avail));
-      int got = this->uart_parent_->read_bytes(this->read_buf_ + this->read_got_, to_read);
-      if (got > 0) {
-        this->read_got_ += got;
-      }
-    }
-
-    // Har vi modtaget nok bytes?
-    if (this->read_got_ >= this->read_expected_) {
-      // Tjek slave id og funktion
-      if (this->read_buf_[0] != this->slave_id_ || this->read_buf_[1] != 0x03) {
-        ESP_LOGW(TAG, "Unexpected Modbus response (slave/fn mismatch)");
-        this->read_state_ = IDLE;
-        return;
-      }
-
-      // CRC i modtaget frame (low byte først)
-      uint16_t recv_crc = (static_cast<uint16_t>(this->read_buf_[this->read_expected_ - 1]) << 8) |
-                          static_cast<uint16_t>(this->read_buf_[this->read_expected_ - 2]);
-      uint16_t calc_crc = modbus_crc16(this->read_buf_, this->read_expected_ - 2);
-
-      if (recv_crc != calc_crc) {
-        ESP_LOGW(TAG, "CRC mismatch: recv=0x%04X calc=0x%04X", recv_crc, calc_crc);
-        this->read_state_ = IDLE;
-        return;
-      }
-
-      // Alt ok: processer data
-      this->read_state_ = IDLE;
-      this->read_index_ = 0;
-      this->process_reads();  // processer køen (læser fra reads_ og opdaterer sensorer)
-      return;
-    }
-
+  int avail = this->uart_parent_->available();
+  if (avail <= 0) {
     // Timeout check
     if (millis() - this->read_start_ms_ > this->read_timeout_ms_) {
       ESP_LOGW(TAG, "Timeout waiting for Modbus response reg=0x%04X", this->read_reg_);
       this->read_state_ = IDLE;
+    }
+    return;
+  }
+
+  // Begræns læsning til bufferstørrelse
+  int to_read = std::min(static_cast<int>(sizeof(this->read_buf_) - this->read_got_), avail);
+  if (to_read <= 0) return;
+
+  int got = this->uart_parent_->read_array(this->read_buf_ + this->read_got_, to_read);
+  if (got > 0) this->read_got_ += got;
+
+  // Hvis vi har modtaget nok bytes, valider og processér
+  if (this->read_got_ >= this->read_expected_) {
+    // Tjek slave id og funktion
+    if (this->read_buf_[0] != this->slave_id_ || this->read_buf_[1] != 0x03) {
+      ESP_LOGW(TAG, "Unexpected Modbus response (slave/func mismatch) got slave=0x%02X func=0x%02X expected slave=0x%02X func=0x03",
+               this->read_buf_[0], this->read_buf_[1], this->slave_id_);
+      this->read_state_ = IDLE;
       return;
     }
+
+    // CRC check (Modbus: CRC low byte first, then high byte)
+    uint16_t recv_crc = (static_cast<uint16_t>(this->read_buf_[this->read_expected_ - 1]) << 8) |
+                        static_cast<uint16_t>(this->read_buf_[this->read_expected_ - 2]);
+    uint16_t calc_crc = modbus_crc16(this->read_buf_, this->read_expected_ - 2);
+    if (recv_crc != calc_crc) {
+      ESP_LOGW(TAG, "CRC mismatch: recv=0x%04X calc=0x%04X", recv_crc, calc_crc);
+      this->read_state_ = IDLE;
+      return;
+    }
+
+    // Extract data bytes (bytecount = read_buf_[2])
+    uint8_t bytecount = this->read_buf_[2];
+    if (bytecount + 5 > static_cast<uint8_t>(this->read_expected_)) {
+      ESP_LOGW(TAG, "Bytecount mismatch in Modbus response: bytecount=%u expected=%d", bytecount, this->read_expected_);
+      this->read_state_ = IDLE;
+      return;
+    }
+
+    // For hver registerpar (2 bytes) konverter til uint16_t
+    std::vector<uint16_t> regs;
+    regs.reserve(bytecount / 2);
+    for (int i = 0; i < bytecount; i += 2) {
+      uint16_t val = (static_cast<uint16_t>(this->read_buf_[3 + i]) << 8) |
+                     static_cast<uint16_t>(this->read_buf_[3 + i + 1]);
+      regs.push_back(val);
+    }
+
+    // Gem eller processér værdierne i reads_ (eksempelvis publish til sensorer)
+    if (this->read_index_ >= 0 && this->read_index_ < static_cast<int>(this->reads_.size())) {
+      auto &it = this->reads_[this->read_index_];
+      // Hvis binary_sensor er sat, publicér boolean (non-zero => true)
+      if (it.binary_sensor != nullptr && !regs.empty()) {
+        bool state = (regs[0] != 0);
+        it.binary_sensor->publish_state(state);
+      }
+      // Hvis text_sensor er sat, publicér tekst (første register som tal)
+      if (it.text_sensor != nullptr && !regs.empty()) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%u", regs[0]);
+        it.text_sensor->publish_state(std::string(buf));
+      }
+      // Hvis der er en sensor (float/number) kan du tilføje publish her
+      if (it.sensor != nullptr && !regs.empty()) {
+        // Eksempel: publish første register som integer/float
+        it.sensor->publish_state(static_cast<float>(regs[0]));
+      }
+    } else {
+      ESP_LOGVV(TAG, "Read index out of range: %d (reads_.size=%d)", this->read_index_, static_cast<int>(this->reads_.size()));
+    }
+
+    // Ryd buffer og afslut læsning
+    this->read_got_ = 0;
+    std::memset(this->read_buf_, 0, sizeof(this->read_buf_));
+    this->read_state_ = IDLE;
   }
 }
 
+// --- process_reads: planlæg næste læsning ---
 void CustomModbus::process_reads() {
-  // Gennemgå reads_ køen og publicer tilknyttede sensorer
-  // Forventet struktur: reads_ er en vector<ReadItem> hvor ReadItem indeholder
-  // reg, count, optional pointerer til binary_sensor/text_sensor/other
-  // Vi antager at ReadItem har felter: binary_sensor, text_sensor, sensor osv.
+  // Simpel rundtur gennem reads_ og start næste læsning
+  if (this->read_state_ != IDLE) return;
+  if (this->reads_.empty()) return;
 
-  for (auto &it : this->reads_) {
-    // Eksempel: hvis der er en binary_sensor tilknyttet
-    if (it.binary_sensor != nullptr) {
-      // Bestem state ud fra modbus-data i read_buf_
-      // Her antager vi at første dataord er MSB/LSB i read_buf_ efter bytecount
-      bool state = false;
-      if (this->read_expected_ >= 5) {
-        // Eksempel: hvis data byte 0 ikke er 0 => true
-        state = (this->read_buf_[3] != 0);
-      }
-      it.binary_sensor->publish_state(state);
-    }
+  // Increment index og wrap
+  this->read_index_++;
+  if (this->read_index_ >= static_cast<int>(this->reads_.size())) this->read_index_ = 0;
 
-    // Tekst-sensor eksempel (konverter bytes til string)
-    if (it.text_sensor != nullptr) {
-      // Konverter data bytes til std::string (enkelt eksempel)
-      std::string buf;
-      // Bytecount er i read_buf_[2]
-      uint8_t bytecount = this->read_buf_[2];
-      for (uint8_t i = 0; i < bytecount && (3 + i) < this->read_expected_ - 2; i++) {
-        char c = static_cast<char>(this->read_buf_[3 + i]);
-        if (c == '\0')
-          break;
-        buf.push_back(c);
-      }
-      it.text_sensor->publish_state(std::string(buf));
-    }
-
-    // Andre sensortyper kan håndteres tilsvarende (float, int osv.)
-    if (it.sensor != nullptr) {
-      // Eksempel: læs et 16-bit register og publicer som float/skalering
-      if (this->read_expected_ >= 5) {
-        uint16_t val = (static_cast<uint16_t>(this->read_buf_[3]) << 8) | static_cast<uint16_t>(this->read_buf_[4]);
-        float scaled = static_cast<float>(val) / it.scale;  // antag ReadItem har scale
-        it.sensor->publish_state(scaled);
-      }
-    }
-  }
-
-  // Ryd køen efter behandling
-  this->reads_.clear();
+  auto &r = this->reads_[this->read_index_];
+  // Start læsning for dette register
+  this->start_read(r.reg, r.count);
 }
 
+// --- loop: kald fra hovedloop ---
 void CustomModbus::loop() {
-  // Kald state handler
+  // Håndter indkommende bytes hvis vi venter
   this->handle_read_state();
 
-  // Hvis vi ikke venter på svar og der er reads i køen, start næste læsning
-  if (this->read_state_ == IDLE && !this->reads_.empty()) {
-    // Tag første item
-    ReadItem r = this->reads_.front();
-    this->reads_.erase(this->reads_.begin());
-
-    // Byg Modbus-forespørgsel (slave + fn + reg_hi + reg_lo + count_hi + count_lo + crc_lo + crc_hi)
-    uint8_t frame[8];
-    frame[0] = static_cast<uint8_t>(this->slave_id_);
-    frame[1] = 0x03;  // read holding registers
-    frame[2] = static_cast<uint8_t>((r.reg >> 8) & 0xFF);
-    frame[3] = static_cast<uint8_t>(r.reg & 0xFF);
-    frame[4] = static_cast<uint8_t>((r.count >> 8) & 0xFF);
-    frame[5] = static_cast<uint8_t>(r.count & 0xFF);
-    uint16_t crc = modbus_crc16(frame, 6);
-    frame[6] = static_cast<uint8_t>(crc & 0xFF);       // CRC low
-    frame[7] = static_cast<uint8_t>((crc >> 8) & 0xFF); // CRC high
-
-    // Send forespørgsel via UART
-    if (this->uart_parent_) {
-      // Hvis du har en DE-pin og ønsker at styre den manuelt, kan du aktivere her:
-      // digitalWrite(this->de_pin_, HIGH); // TX enable
-      this->uart_parent_->write_array(frame, 8);
-      this->uart_parent_->flush();
-      // digitalWrite(this->de_pin_, LOW); // tilbage til RX (hvis manuel DE)
-    }
-
-    // Forbered læse-state
-    this->read_state_ = WAITING;
-    this->read_start_ms_ = millis();
-    this->read_expected_ = static_cast<uint8_t>(5 + r.count * 2); // slave + fn + bytecount + data + crc_lo + crc_hi
-    this->read_got_ = 0;
-    this->read_reg_ = r.reg;
-    this->read_count_ = r.count;
-    // read_buf_ nulstilles ikke nødvendigvis, men vi sætter read_got_ til 0 så vi overskriver
+  // Hvis IDLE, planlæg næste læsning med passende interval
+  static uint32_t last_read_ms = 0;
+  const uint32_t read_interval_ms = 1000; // juster efter behov
+  if (this->read_state_ == IDLE && millis() - last_read_ms > read_interval_ms) {
+    last_read_ms = millis();
+    this->process_reads();
   }
 }
 
 }  // namespace custommodbus
 }  // namespace esphome
+
