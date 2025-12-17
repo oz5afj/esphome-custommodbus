@@ -17,25 +17,39 @@ static const char *const TAG = "custommodbus";
 void CustomModbus::setup() {
   ESP_LOGCONFIG(TAG, "Setting up CustomModbus with slave ID %u", this->slave_id_);
   ESP_LOGI(TAG, "uart_parent_ pointer: %p", this->uart_parent_);
+  // Ensure read state is idle on startup
+  this->read_state_ = IDLE;
+  this->read_start_ms_ = 0;
+  this->read_expected_ = 0;
+  this->read_got_ = 0;
+  this->read_index_ = 0;
 }
 
 //
-// LOOP
+// LOOP (ikke-blokerende state maskine for reads)
 //
 void CustomModbus::loop() {
   static uint32_t last = 0;
   const uint32_t now = millis();
 
-  // Poll interval (ms). Øg hvis bus er langsom eller for at reducere trafik.
-  const uint32_t interval = 500;
+  // Poll interval (ms). Sæt til 1000-2000 for langsomme invertere.
+  const uint32_t interval = 1500;
 
-  if (now - last < interval)
-    return;
+  if (now - last >= interval) {
+    last = now;
+    this->process_writes();
 
-  last = now;
+    // Start en ny read kun hvis IDLE og der er reads
+    if (this->read_state_ == IDLE && !this->reads_.empty()) {
+      if (this->read_index_ >= this->reads_.size())
+        this->read_index_ = 0;
+      auto &r = this->reads_[this->read_index_++];
+      this->start_read(r.reg, r.count);
+    }
+  }
 
-  this->process_writes();
-  this->process_reads();
+  // Håndter read state hver loop (ikke-blokerende)
+  this->handle_read_state();
 }
 
 //
@@ -110,81 +124,13 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
 }
 
 //
-// PROCESS READS
+// PROCESS READS (bevares for kompatibilitet, men primært bruger state-maskinen)
 //
 void CustomModbus::process_reads() {
-  static size_t index = 0;
-
-  if (this->reads_.empty())
-    return;
-
-  if (index >= this->reads_.size())
-    index = 0;
-
-  auto &r = this->reads_[index];
-  index++;
-
-  uint8_t resp[64]{0};
-  uint8_t resp_len = 0;
-
-  if (!this->read_registers(r.reg, r.count, resp, resp_len))
-    return;
-
-  // Forventet format: [slave][func][bytecount][data...][crc_lo][crc_hi]
-  if (resp_len < 5) {
-    ESP_LOGW(TAG, "Received too short response %d bytes", resp_len);
-    return;
-  }
-
-  // Eksempel: for 1 register: data starter ved resp[3], resp[3]<<8 | resp[4]
-  const uint16_t raw16 = (static_cast<uint16_t>(resp[3]) << 8) | resp[4];
-
-  uint32_t raw32 = 0;
-  if (r.count == 2 && resp_len >= 7) {
-    raw32 = (static_cast<uint32_t>(resp[3]) << 24) |
-            (static_cast<uint32_t>(resp[4]) << 16) |
-            (static_cast<uint32_t>(resp[5]) << 8) |
-            static_cast<uint32_t>(resp[6]);
-  }
-
-  if (r.sensor != nullptr) {
-    float value = 0.0f;
-
-    switch (r.type) {
-      case TYPE_UINT16:
-        value = static_cast<float>(raw16);
-        break;
-      case TYPE_INT16:
-        value = static_cast<float>(static_cast<int16_t>(raw16));
-        break;
-      case TYPE_UINT32:
-        value = static_cast<float>(raw32);
-        break;
-      case TYPE_UINT32_R:
-        value = static_cast<float>(__builtin_bswap32(raw32));
-        break;
-      default:
-        value = static_cast<float>(raw16);
-        break;
-    }
-
-    value *= r.scale;
-    r.sensor->publish_state(value);
-  }
-
-  // Binary/text publishing midlertidigt deaktiveret i runtime
-#if 0
-  if (r.binary_sensor != nullptr) {
-    const bool state = (raw16 & r.bitmask) != 0;
-    r.binary_sensor->publish_state(state);
-  }
-
-  if (r.text_sensor != nullptr) {
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%04X", raw16);
-    r.text_sensor->publish_state(buf);
-  }
-#endif
+  // Denne funktion er bevaret for bagudkompatibilitet, men den
+  // primære læseflow er nu asynkront via start_read/handle_read_state.
+  // Hvis du vil bruge synkrone reads, kan du beholde read_registers.
+  (void)0;
 }
 
 //
@@ -234,7 +180,7 @@ void CustomModbus::process_writes() {
 }
 
 //
-// READ REGISTERS (akkumulerende, validerende)
+// READ REGISTERS (synkron fallback - beholdes men ikke brugt i hovedflow)
 //
 bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len) {
   uint8_t frame[8];
@@ -317,6 +263,131 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
 
   ESP_LOGW(TAG, "Timeout waiting for Modbus response reg=0x%04X", reg);
   return false;
+}
+
+//
+// ASYNKRON LÆSEFLOW: start_read + handle_read_state
+//
+
+void CustomModbus::start_read(uint16_t reg, uint8_t count) {
+  if (this->uart_parent_ == nullptr) return;
+
+  uint8_t frame[8];
+  frame[0] = this->slave_id_;
+  frame[1] = 3;
+  frame[2] = (reg >> 8) & 0xFF;
+  frame[3] = reg & 0xFF;
+  frame[4] = 0;
+  frame[5] = count;
+  uint16_t crc = this->crc16(frame, 6);
+  frame[6] = crc & 0xFF;
+  frame[7] = crc >> 8;
+
+  // Tøm RX før TX
+  while (this->uart_parent_->available() > 0) {
+    uint8_t tmp; this->uart_parent_->read_array(&tmp, 1);
+  }
+
+  // Log TX
+  ESP_LOGVV(TAG, "TX frame (start_read):");
+  for (int i = 0; i < 8; ++i) ESP_LOGVV(TAG, " %02X", frame[i]);
+
+  this->uart_parent_->write_array(frame, 8);
+  this->uart_parent_->flush();
+
+  // Gem metadata for asynkron læsning
+  this->read_state_ = WAITING;
+  this->read_start_ms_ = millis();
+  this->read_expected_ = static_cast<uint8_t>(5 + count * 2);
+  this->read_got_ = 0;
+  this->read_reg_ = reg;
+  this->read_count_ = count;
+  memset(this->read_buf_, 0, sizeof(this->read_buf_));
+}
+
+void CustomModbus::handle_read_state() {
+  if (this->read_state_ == IDLE) return;
+  if (this->uart_parent_ == nullptr) { this->read_state_ = IDLE; return; }
+
+  uint32_t now = millis();
+
+  // Læs hvad der er tilgængeligt (akkumuler)
+  int avail = this->uart_parent_->available();
+  if (avail > 0) {
+    int to_read = std::min(static_cast<int>(sizeof(this->read_buf_) - this->read_got_), avail);
+    if (to_read > 0) {
+      this->uart_parent_->read_array(this->read_buf_ + this->read_got_, to_read);
+      this->read_got_ += to_read;
+
+      // Log rå bytes
+      ESP_LOGVV(TAG, "RX raw (%d):", this->read_got_);
+      for (uint8_t i = 0; i < this->read_got_; ++i) ESP_LOGVV(TAG, " %02X", this->read_buf_[i]);
+    }
+  }
+
+  // Hvis vi har nok bytes, valider og processér
+  if (this->read_got_ >= this->read_expected_) {
+    uint8_t *buf = this->read_buf_;
+    uint8_t expected = this->read_expected_;
+
+    // Slave id + function
+    if (buf[0] != this->slave_id_ || buf[1] != 3) {
+      ESP_LOGW(TAG, "Ignoring frame wrong slave/function %02X %02X", buf[0], buf[1]);
+      this->read_state_ = IDLE;
+      return;
+    }
+
+    // CRC (Modbus: low byte first)
+    uint16_t recv_crc = (static_cast<uint16_t>(buf[expected - 1]) << 8) | buf[expected - 2];
+    uint16_t calc_crc = this->crc16(buf, expected - 2);
+    if (recv_crc != calc_crc) {
+      ESP_LOGW(TAG, "Ignoring frame CRC mismatch got %04X calc %04X", recv_crc, calc_crc);
+      this->read_state_ = IDLE;
+      return;
+    }
+
+    // Kopier til lokal resp og publicér til matchende read item
+    uint8_t resp[64]; uint8_t resp_len = expected;
+    memcpy(resp, buf, expected);
+
+    // Find read item med reg == read_reg_ og count == read_count_
+    for (auto &r : this->reads_) {
+      if (r.reg == this->read_reg_ && r.count == this->read_count_) {
+        const uint16_t raw16 = (static_cast<uint16_t>(resp[3]) << 8) | resp[4];
+        uint32_t raw32 = 0;
+        if (r.count == 2 && resp_len >= 7) {
+          raw32 = (static_cast<uint32_t>(resp[3]) << 24) |
+                  (static_cast<uint32_t>(resp[4]) << 16) |
+                  (static_cast<uint32_t>(resp[5]) << 8) |
+                  static_cast<uint32_t>(resp[6]);
+        }
+
+        if (r.sensor != nullptr) {
+          float value = 0.0f;
+          switch (r.type) {
+            case TYPE_UINT16: value = static_cast<float>(raw16); break;
+            case TYPE_INT16: value = static_cast<float>(static_cast<int16_t>(raw16)); break;
+            case TYPE_UINT32: value = static_cast<float>(raw32); break;
+            case TYPE_UINT32_R: value = static_cast<float>(__builtin_bswap32(raw32)); break;
+            default: value = static_cast<float>(raw16); break;
+          }
+          value *= r.scale;
+          r.sensor->publish_state(value);
+        }
+        break;
+      }
+    }
+
+    this->read_state_ = IDLE;
+    return;
+  }
+
+  // Timeout
+  if (now - this->read_start_ms_ > this->read_timeout_ms_) {
+    ESP_LOGW(TAG, "Timeout waiting for Modbus response reg=0x%04X", this->read_reg_);
+    this->read_state_ = IDLE;
+    return;
+  }
 }
 
 //
