@@ -44,13 +44,13 @@ async def to_code(config):
     for g in config[CONF_GROUPS]:
         group_name = g['name']
         # hent millisekunder fra TimePeriodMilliseconds objektet
-        # (TimePeriodMilliseconds har attributten total_milliseconds)
         interval_ms = int(g['interval'].total_milliseconds)
         cg.add(var.add_group(group_name, interval_ms))
 
         for r in g['reads']:
             # Opret en ESPHome sensor og registrer den
-            sens = sensor.new_sensor(r[CONF_NAME])
+            # sensor.new_sensor er en coroutine — derfor await her
+            sens = await sensor.new_sensor(r[CONF_NAME])
             await sensor.register_sensor(sens, r[CONF_NAME])
             alpha = float(r.get('smoothing_alpha', 0.0))
             # Tilføj read til gruppen
