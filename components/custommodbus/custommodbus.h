@@ -5,20 +5,6 @@
 #include "esphome/components/sensor/sensor.h"
 #include <vector>
 
-
-// --- tilføj i CustomModbus class (protected) ---
-enum ReadState { IDLE, WAITING, PROCESSING };
-ReadState read_state_{IDLE};
-uint32_t read_start_ms_{0};
-uint32_t read_timeout_ms_{1000}; // 1s timeout
-uint8_t read_expected_{0};
-uint8_t read_buf_[64];
-uint8_t read_got_{0};
-uint16_t read_reg_{0};
-uint8_t read_count_{0};
-size_t read_index_{0}; // rotation index for reads_
-
-
 // Forward declarations for binary/text sensors to avoid requiring their headers here
 namespace esphome {
 namespace binary_sensor { class BinarySensor; }
@@ -87,10 +73,27 @@ class CustomModbus : public Component, public uart::UARTDevice {
   uart::UARTComponent *uart_parent_{nullptr};
   uint8_t slave_id_{1};
 
+  // Læse- og skrivekøer
   std::vector<ReadItem> reads_;
   std::vector<WriteItem> writes_;
+
+  // --- Asynkrone read‑state medlemmer (bruges af custommodbus.cpp) ---
+  enum ReadState { IDLE = 0, WAITING = 1, PROCESSING = 2 };
+
+  ReadState read_state_{IDLE};
+  uint32_t read_start_ms_{0};
+  uint32_t read_timeout_ms_{1000}; // default timeout i ms (kan justeres)
+  uint8_t read_expected_{0};
+  uint8_t read_buf_[64];
+  uint8_t read_got_{0};
+  uint16_t read_reg_{0};
+  uint8_t read_count_{0};
+  size_t read_index_{0};
+
+  // Asynkrone read helper metoder (deklarationer)
+  void start_read(uint16_t reg, uint8_t count);
+  void handle_read_state();
 };
 
 }  // namespace custommodbus
 }  // namespace esphome
-
