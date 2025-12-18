@@ -20,6 +20,9 @@ PLATFORM_SCHEMA = cv.Schema(
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
+# ESPHome loader forventer CONFIG_SCHEMA
+CONFIG_SCHEMA = PLATFORM_SCHEMA
+
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_ID])
@@ -33,7 +36,6 @@ async def to_code(config):
         cg.add(sel.add_option(name, value))
 
     # Når select ændres, skriv den valgte værdi til registeret
-    # Bemærk: cg.uint16_t(sel) bruges som wrapper for select objektet, lignende mønster som cg.float_(num)
     cg.add(sel.add_on_state_callback(
         parent.write_single(config["register"], cg.uint16_t(sel))
     ))
