@@ -21,6 +21,9 @@ PLATFORM_SCHEMA = cv.Schema(
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
+# ESPHome loader forventer CONFIG_SCHEMA
+CONFIG_SCHEMA = PLATFORM_SCHEMA
+
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_ID])
@@ -30,7 +33,7 @@ async def to_code(config):
     cg.add(parent.set_slave_id(config["slave_id"]))
 
     # Tilknyt callback: skriv register ved ændring af talværdien.
-    # Bemærk: hvis dette giver typefejl, så sig til — jeg tilpasser callback'en til din komponent-API.
+    # Bemærk: parent.write_single forventer et tal; cg.float_(num) bruges som wrapper til codegen.
     cg.add(num.add_on_state_callback(
         parent.write_single(config["register"], cg.float_(num))
     ))
