@@ -17,7 +17,7 @@ PLATFORM_SCHEMA = cv.Schema(
         cv.Optional("raw_encode"): cv.string,
         cv.Optional("icon"): cv.icon,
     }
-).extend(uart.UART_DEVICE_SCHEMA)
+).extend(cv.COMPONENT_SCHEMA).extend(uart.UART_DEVICE_SCHEMA)
 
 CONFIG_SCHEMA = PLATFORM_SCHEMA
 
