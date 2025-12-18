@@ -10,7 +10,7 @@ PLATFORM_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(text_sensor.TextSensor),
         cv.Optional("name"): cv.string,
-        cv.Required(CONF_ID): cv.use_id(CustomModbus),
+        cv.Required("custommodbus_id"): cv.use_id(CustomModbus),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
         cv.Optional("data_type"): cv.string,
@@ -23,7 +23,7 @@ CONFIG_SCHEMA = PLATFORM_SCHEMA
 
 
 async def to_code(config):
-    parent = await cg.get_variable(config[CONF_ID])
+    parent = await cg.get_variable(config["custommodbus_id"])
     await uart.register_uart_device(parent, config)
     ts = await text_sensor.new_text_sensor(config)
 
