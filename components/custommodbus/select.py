@@ -16,7 +16,7 @@ PLATFORM_SCHEMA = cv.Schema(
         cv.Required("options"): cv.Schema({cv.string: cv.positive_int}),
         cv.Optional("icon"): cv.icon,
     }
-).extend(uart.UART_DEVICE_SCHEMA)
+).extend(cv.COMPONENT_SCHEMA).extend(uart.UART_DEVICE_SCHEMA)
 
 CONFIG_SCHEMA = PLATFORM_SCHEMA
 
