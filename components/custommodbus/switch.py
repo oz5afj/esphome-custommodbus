@@ -6,7 +6,7 @@ from esphome.const import CONF_ID
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
-# Definer et robust schema direkte med cv.Schema så det virker på alle ESPHome-versioner
+# Robust schema defineret direkte med cv.Schema
 PLATFORM_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(switch.Switch),
@@ -19,6 +19,9 @@ PLATFORM_SCHEMA = cv.Schema(
         cv.Optional("entity_category"): cv.string,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
+
+# ESPHome loader forventer CONFIG_SCHEMA
+CONFIG_SCHEMA = PLATFORM_SCHEMA
 
 
 async def to_code(config):
