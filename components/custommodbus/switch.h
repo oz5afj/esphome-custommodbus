@@ -1,4 +1,5 @@
 #pragma once
+
 #include "esphome/components/switch/switch.h"
 #include "custommodbus.h"
 
@@ -22,10 +23,10 @@ class CustomModbusSwitch : public switch_::Switch {
     publish_state(state);
   }
 
-  CustomModbus *parent_;
-  uint16_t register_;
+  CustomModbus *parent_{nullptr};
+  uint16_t register_{0};
   uint16_t bitmask_{0};
-  uint8_t slave_id_;
+  uint8_t slave_id_{1};
 };
 
 }  // namespace custommodbus
