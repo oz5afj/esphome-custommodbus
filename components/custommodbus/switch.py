@@ -12,6 +12,14 @@ from esphome.const import (
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
+# Map string names to the SwitchRestoreMode enum values so cv.enum gets a dict
+_RESTORE_MODE_MAPPING = {
+    "RESTORE_DEFAULT": switch.SwitchRestoreMode.RESTORE_DEFAULT,
+    "RESTORE_ALWAYS_OFF": switch.SwitchRestoreMode.RESTORE_ALWAYS_OFF,
+    "RESTORE_ALWAYS_ON": switch.SwitchRestoreMode.RESTORE_ALWAYS_ON,
+    # Tilføj flere hvis din ESPHome‑version har andre navne
+}
+
 PLATFORM_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(switch.Switch),
@@ -24,8 +32,8 @@ PLATFORM_SCHEMA = cv.Schema(
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
-        # Brug enum validering så codegen genererer korrekt C++ enum/konstant
-        cv.Optional(CONF_RESTORE_MODE, default=switch.SwitchRestoreMode.RESTORE_DEFAULT): cv.enum(switch.SwitchRestoreMode),
+        # Brug mapping så cv.enum får et dict og codegen kan generere en C++ enum konstant
+        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT"): cv.enum(_RESTORE_MODE_MAPPING),
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
@@ -38,7 +46,7 @@ async def to_code(config):
 
     # Sikre defaults så setup_switch_core_ ikke kaster KeyError
     config.setdefault(CONF_DISABLED_BY_DEFAULT, False)
-    config.setdefault(CONF_RESTORE_MODE, switch.SwitchRestoreMode.RESTORE_DEFAULT)
+    # config[CONF_RESTORE_MODE] er allerede mappet til enum‑værdi af cv.enum
 
     sw = await switch.new_switch(config)
 
