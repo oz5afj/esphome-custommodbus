@@ -28,4 +28,4 @@ def to_code(config):
     if CONF_USE_GROUPED_READS in config:
         cg.add(var.set_use_grouped_reads(config[CONF_USE_GROUPED_READS]))
 
-    cg.add(var.setup())
+
