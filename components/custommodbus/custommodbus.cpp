@@ -73,21 +73,35 @@ void CustomModbus::add_text_sensor(uint16_t reg, esphome::text_sensor::TextSenso
 }
 
 void CustomModbus::write_single(uint16_t reg, uint16_t value) {
+  if (!should_write(reg, value)) {
+    return;
+  }
+
   WriteItem w;
   w.reg = reg;
   w.value = value;
   w.use_mask = false;
   w.mask = 0;
   this->writes_.push_back(w);
+
+  record_write(reg, value);
 }
 
 void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
+  uint16_t new_value = state ? mask : 0;
+
+  if (!should_write(reg, new_value)) {
+    return;
+  }
+
   WriteItem w;
   w.reg = reg;
   w.mask = mask;
   w.use_mask = true;
-  w.value = state ? mask : 0;
+  w.value = new_value;
   this->writes_.push_back(w);
+
+  record_write(reg, new_value);
 }
 
 // --- Grouped reads: build blocks from reads_ ---
@@ -596,3 +610,4 @@ void CustomModbus::process_writes() {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
