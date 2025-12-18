@@ -3,8 +3,7 @@ import esphome.config_validation as cv
 from esphome.components import uart, number
 from esphome.const import (
     CONF_ID,
-    CONF_DISABLED_BY_DEFAULT,
-    CONF_RESTORE_MODE,
+    CONF_NAME,
     CONF_ICON,
     CONF_ENTITY_CATEGORY,
     CONF_DEVICE_CLASS,
@@ -12,38 +11,41 @@ from esphome.const import (
 
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
+CustomModbusNumber = custommodbus_ns.class_("CustomModbusNumber", number.Number)
 
-PLATFORM_SCHEMA = cv.Schema(
+CONFIG_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(): cv.declare_id(number.Number),
-        cv.Optional("name"): cv.string,
+        cv.GenerateID(): cv.declare_id(CustomModbusNumber),
         cv.Required("custommodbus_id"): cv.use_id(CustomModbus),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
-        cv.Optional("min_value"): cv.float_,
-        cv.Optional("max_value"): cv.float_,
-        cv.Optional("step"): cv.float_,
-        cv.Optional("unit_of_measurement"): cv.string,
+        cv.Optional("bitmask", default=0): cv.hex_uint16_t,
+
+        cv.Required("min_value"): cv.float_,
+        cv.Required("max_value"): cv.float_,
+        cv.Required("step"): cv.float_,
+
+        cv.Optional(CONF_NAME): cv.string,
         cv.Optional(CONF_ICON): cv.icon,
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
-        cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
-        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT"): cv.string,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
-
-CONFIG_SCHEMA = PLATFORM_SCHEMA
-
 
 async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     await uart.register_uart_device(parent, config)
 
-    config.setdefault(CONF_DISABLED_BY_DEFAULT, False)
-    config.setdefault(CONF_RESTORE_MODE, "RESTORE_DEFAULT")
+    num = cg.new_Pvariable(config[CONF_ID])
+    await number.register_number(
+        num,
+        config,
+        min_value=config["min_value"],
+        max_value=config["max_value"],
+        step=config["step"],
+    )
 
-    num = await number.new_number(config)
-
-    cg.add(parent.set_slave_id(config["slave_id"]))
-
-    # Hvis du senere vil skrive værdier fra number til Modbus, kan du tilføje callbacks i parent-komponenten.
+    cg.add(num.set_parent(parent))
+    cg.add(num.set_slave_id(config["slave_id"]))
+    cg.add(num.set_register(config["register"]))
+    cg.add(num.set_bitmask(config["bitmask"]))
