@@ -6,14 +6,21 @@ from esphome.const import CONF_ID
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
-PLATFORM_SCHEMA = text_sensor.text_sensor_schema().extend(
+PLATFORM_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(text_sensor.TextSensor),
+        cv.Optional("name"): cv.string,
         cv.Required(CONF_ID): cv.use_id(CustomModbus),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
+        cv.Optional("data_type"): cv.string,
+        cv.Optional("raw_encode"): cv.string,
+        cv.Optional("icon"): cv.icon,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
+
+CONFIG_SCHEMA = PLATFORM_SCHEMA
+
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_ID])
