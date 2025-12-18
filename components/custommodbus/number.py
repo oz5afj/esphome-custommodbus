@@ -18,7 +18,7 @@ PLATFORM_SCHEMA = cv.Schema(
         cv.Optional("step"): cv.float_,
         cv.Optional("unit_of_measurement"): cv.string,
     }
-).extend(uart.UART_DEVICE_SCHEMA)
+).extend(cv.COMPONENT_SCHEMA).extend(uart.UART_DEVICE_SCHEMA)
 
 CONFIG_SCHEMA = PLATFORM_SCHEMA
 
