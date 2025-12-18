@@ -6,14 +6,17 @@ from esphome.const import CONF_ID
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 
-# Brug PLATFORM_SCHEMA i stedet for switch.switch_schema()
-PLATFORM_SCHEMA = switch.PLATFORM_SCHEMA.extend(
+# Definer et robust schema direkte med cv.Schema så det virker på alle ESPHome-versioner
+PLATFORM_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(switch.Switch),
+        cv.Optional("name"): cv.string,
         cv.Required(CONF_ID): cv.use_id(CustomModbus),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
         cv.Optional("bitmask"): cv.hex_uint16_t,
+        cv.Optional("icon"): cv.icon,
+        cv.Optional("entity_category"): cv.string,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
@@ -21,15 +24,17 @@ PLATFORM_SCHEMA = switch.PLATFORM_SCHEMA.extend(
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_ID])
     await uart.register_uart_device(parent, config)
+
+    # Opret switch objektet (navn/icon håndteres af switch.new_switch)
     sw = await switch.new_switch(config)
 
     cg.add(parent.set_slave_id(config["slave_id"]))
 
     if "bitmask" in config:
-        # Bind on/off actions to bitmask writes
+        # Tilknyt on/off til bitmask skriv
         cg.add(sw.add_on_turn_on(parent.write_bitmask(config["register"], config["bitmask"], True)))
         cg.add(sw.add_on_turn_off(parent.write_bitmask(config["register"], config["bitmask"], False)))
     else:
-        # Bind on/off actions to single register writes
+        # Tilknyt on/off til simple register skriv
         cg.add(sw.add_on_turn_on(parent.write_single(config["register"], 1)))
         cg.add(sw.add_on_turn_off(parent.write_single(config["register"], 0)))
