@@ -1,4 +1,4 @@
-#include "custommodbus.h"
+ #include "custommodbus.h"
 #include "esphome/core/log.h"
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -90,6 +90,56 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
   this->writes_.push_back(w);
 }
 
+// --- Grouped reads: build blocks from reads_ ---
+void CustomModbus::build_read_blocks() {
+  this->blocks_.clear();
+  if (reads_.empty()) return;
+
+  // Sort by register
+  std::sort(reads_.begin(), reads_.end(), [](const ReadItem &a, const ReadItem &b) {
+    return a.reg < b.reg;
+  });
+
+  ReadBlock current;
+  bool first = true;
+
+  for (auto &it : this->reads_) {
+    if (first) {
+      current.start_reg = it.reg;
+      current.count = it.count;
+      current.items.clear();
+      current.items.push_back(&it);
+      first = false;
+      continue;
+    }
+
+    uint16_t expected_next = current.start_reg + current.count;
+
+    if (it.reg == expected_next) {
+      // extend block
+      current.count += it.count;
+      current.items.push_back(&it);
+    } else {
+      // save block
+      blocks_.push_back(current);
+
+      // start new block
+      current.start_reg = it.reg;
+      current.count = it.count;
+      current.items.clear();
+      current.items.push_back(&it);
+    }
+  }
+
+  // save last block
+  if (!first) {
+    blocks_.push_back(current);
+  }
+
+  ESP_LOGI(TAG, "Grouped %u read items into %u Modbus blocks",
+           (unsigned)reads_.size(), (unsigned)blocks_.size());
+}
+
 // --- Lifecycle ---
 void CustomModbus::setup() {
   // Ensure required GPIOs are driven HIGH so board works (user requested)
@@ -110,8 +160,12 @@ void CustomModbus::setup() {
   read_count_ = 0;
   read_index_ = 0;
 
-  // Nothing else to do here; uart_parent_ is set by set_uart_parent from ESPHome
   ESP_LOGI(TAG, "CustomModbus setup complete (slave id=%u)", this->slave_id_);
+
+  // Hvis grouped-reads er slået til, bygg blokke
+  if (this->use_grouped_reads_) {
+    this->build_read_blocks();
+  }
 }
 
 void CustomModbus::loop() {
@@ -155,30 +209,180 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
 void CustomModbus::process_reads() {
   if (!this->uart_parent_) return;
 
-  // If idle, start a new read if we have configured reads
+  // MODE 1: klassisk enkelt-read (din eksisterende kode) når grouped ikke er slået til
+  if (!this->use_grouped_reads_) {
+
+    // If idle, start a new read if we have configured reads
+    if (read_state_ == IDLE) {
+      if (this->reads_.empty()) return;
+
+      // rotate through reads_ to spread queries
+      if (read_index_ >= this->reads_.size()) read_index_ = 0;
+      const ReadItem &r = this->reads_[read_index_];
+
+      // send request for this read
+      uint16_t reg = r.reg;
+      uint8_t count = r.count;
+      // prepare state
+      read_state_ = WAITING;
+      read_start_ms_ = millis();
+      read_expected_ = static_cast<uint8_t>(5 + count * 2); // slave + func + bytecount + data + crc_lo + crc_hi
+      read_got_ = 0;
+      read_reg_ = reg;
+      read_count_ = count;
+
+      // Nulstil buffer før vi begynder at læse
+      memset(read_buf_, 0, sizeof(read_buf_));
+
+      // send request
+      uint8_t frame[8];
+      frame[0] = this->slave_id_;
+      frame[1] = 0x03;
+      frame[2] = static_cast<uint8_t>((reg >> 8) & 0xFF);
+      frame[3] = static_cast<uint8_t>(reg & 0xFF);
+      frame[4] = 0x00;
+      frame[5] = count;
+      uint16_t crc = this->crc16(frame, 6);
+      frame[6] = static_cast<uint8_t>(crc & 0xFF);
+      frame[7] = static_cast<uint8_t>((crc >> 8) & 0xFF);
+
+      this->uart_parent_->write_array(frame, 8);
+      this->uart_parent_->flush();
+
+      // advance rotation index for next time
+      read_index_++;
+      if (read_index_ >= this->reads_.size()) read_index_ = 0;
+
+      return;
+    }
+
+    // WAITING: read available bytes
+    if (read_state_ == WAITING) {
+      size_t avail = this->uart_parent_->available();
+      if (avail > 0) {
+        // read up to buffer capacity
+        int to_read = std::min(static_cast<int>(sizeof(read_buf_) - read_got_), static_cast<int>(avail));
+        if (to_read > 0) {
+          this->uart_parent_->read_array(this->read_buf_ + read_got_, to_read);
+          read_got_ += to_read;
+        }
+      }
+
+      // If we've got expected bytes, validate and process
+      if (read_got_ >= read_expected_) {
+        // Basic checks: slave id and function
+        if (read_buf_[0] != this->slave_id_ || read_buf_[1] != 0x03) {
+          ESP_LOGW(TAG, "Ignoring frame wrong slave/function %02X %02X", read_buf_[0], read_buf_[1]);
+          // reset and continue
+          read_state_ = IDLE;
+          read_got_ = 0;
+          return;
+        }
+
+        // CRC check
+        uint16_t recv_crc = (static_cast<uint16_t>(read_buf_[read_expected_ - 1]) << 8) | read_buf_[read_expected_ - 2];
+        uint16_t calc_crc = this->crc16(read_buf_, read_expected_ - 2);
+        if (recv_crc != calc_crc) {
+          ESP_LOGW(TAG, "CRC mismatch (recv=0x%04X calc=0x%04X) reg=0x%04X", recv_crc, calc_crc, read_reg_);
+          read_state_ = IDLE;
+          read_got_ = 0;
+          return;
+        }
+
+        // Extract byte count and data
+        uint8_t bytecount = read_buf_[2];
+        const uint8_t *data = &read_buf_[3];
+
+        // Find matching read item (reg & count)
+        bool matched = false;
+        for (auto &it : this->reads_) {
+          if (it.reg == read_reg_ && it.count == read_count_) {
+            matched = true;
+            // handle binary/text sensors first
+            if (it.binary_sensor) {
+              // read first register as uint16
+              uint16_t val = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+              bool state = (val & it.bitmask) != 0;
+              it.binary_sensor->publish_state(state);
+            } else if (it.text_sensor) {
+              // publish raw hex or decimal string of first register
+              uint16_t val = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+              char buf[16];
+              snprintf(buf, sizeof(buf), "%u", val);
+              it.text_sensor->publish_state(std::string(buf));
+            } else if (it.sensor) {
+              // numeric sensor: support types
+              if (it.type == TYPE_UINT16) {
+                uint16_t v = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+                it.sensor->publish_state(static_cast<float>(v) * it.scale);
+              } else if (it.type == TYPE_INT16) {
+                int16_t v = (static_cast<int16_t>(data[0]) << 8) | data[1];
+                it.sensor->publish_state(static_cast<float>(v) * it.scale);
+              } else if (it.type == TYPE_UINT32) {
+                // big-endian: reg0 high word, reg1 low word
+                if (bytecount >= 4) {
+                  uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
+                  uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+                  uint32_t v = (hi << 16) | lo;
+                  it.sensor->publish_state(static_cast<float>(v) * it.scale);
+                }
+              } else if (it.type == TYPE_UINT32_R) {
+                // reversed 32-bit: reg0 low word, reg1 high word
+                if (bytecount >= 4) {
+                  uint32_t lo = (static_cast<uint32_t>(data[0]) << 8) | data[1];
+                  uint32_t hi = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+                  uint32_t v = (lo << 16) | hi;
+                  it.sensor->publish_state(static_cast<float>(v) * it.scale);
+                }
+              }
+            }
+            break;
+          }
+        }
+
+        if (!matched) {
+          ESP_LOGW(TAG, "Received response for reg=0x%04X count=%u but no matching read item", read_reg_, read_count_);
+        }
+
+        // Reset state for next read
+        read_state_ = IDLE;
+        read_got_ = 0;
+        return;
+      }
+
+      // Timeout handling
+      if (millis() - read_start_ms_ > read_timeout_ms_) {
+        ESP_LOGW(TAG, "Timeout waiting for Modbus response reg=0x%04X", read_reg_);
+        read_state_ = IDLE;
+        read_got_ = 0;
+        return;
+      }
+    }
+
+    return;
+  }
+
+  // MODE 2: grouped-reads
+  // If idle, start a new block read
   if (read_state_ == IDLE) {
-    if (this->reads_.empty()) return;
+    if (this->blocks_.empty()) return;
 
-    // rotate through reads_ to spread queries
-    if (read_index_ >= this->reads_.size()) read_index_ = 0;
-    const ReadItem &r = this->reads_[read_index_];
+    if (read_index_ >= this->blocks_.size()) read_index_ = 0;
+    const ReadBlock &b = this->blocks_[read_index_];
 
-    // send request for this read
-    uint16_t reg = r.reg;
-    uint8_t count = r.count;
-    // prepare state
+    uint16_t reg = b.start_reg;
+    uint8_t count = b.count;
+
     read_state_ = WAITING;
     read_start_ms_ = millis();
-    read_expected_ = static_cast<uint8_t>(5 + count * 2); // slave + func + bytecount + data + crc_lo + crc_hi
+    read_expected_ = static_cast<uint8_t>(5 + count * 2);  // addr+func+bytecount+data+crc
     read_got_ = 0;
     read_reg_ = reg;
     read_count_ = count;
 
-    
-    // ✅ Nulstil buffer før vi begynder at læse
     memset(read_buf_, 0, sizeof(read_buf_));
 
-    // send request
+    // Build request frame
     uint8_t frame[8];
     frame[0] = this->slave_id_;
     frame[1] = 0x03;
@@ -193,18 +397,17 @@ void CustomModbus::process_reads() {
     this->uart_parent_->write_array(frame, 8);
     this->uart_parent_->flush();
 
-    // advance rotation index for next time
+    // næste blok næste gang
     read_index_++;
-    if (read_index_ >= this->reads_.size()) read_index_ = 0;
+    if (read_index_ >= this->blocks_.size()) read_index_ = 0;
 
     return;
   }
 
-  // WAITING: read available bytes
+  // WAITING: læs svar (grouped)
   if (read_state_ == WAITING) {
     size_t avail = this->uart_parent_->available();
     if (avail > 0) {
-      // read up to buffer capacity
       int to_read = std::min(static_cast<int>(sizeof(read_buf_) - read_got_), static_cast<int>(avail));
       if (to_read > 0) {
         this->uart_parent_->read_array(this->read_buf_ + read_got_, to_read);
@@ -212,18 +415,16 @@ void CustomModbus::process_reads() {
       }
     }
 
-    // If we've got expected bytes, validate and process
     if (read_got_ >= read_expected_) {
-      // Basic checks: slave id and function
+      // Basic checks
       if (read_buf_[0] != this->slave_id_ || read_buf_[1] != 0x03) {
         ESP_LOGW(TAG, "Ignoring frame wrong slave/function %02X %02X", read_buf_[0], read_buf_[1]);
-        // reset and continue
         read_state_ = IDLE;
         read_got_ = 0;
         return;
       }
 
-      // CRC check
+      // CRC
       uint16_t recv_crc = (static_cast<uint16_t>(read_buf_[read_expected_ - 1]) << 8) | read_buf_[read_expected_ - 2];
       uint16_t calc_crc = this->crc16(read_buf_, read_expected_ - 2);
       if (recv_crc != calc_crc) {
@@ -233,68 +434,75 @@ void CustomModbus::process_reads() {
         return;
       }
 
-      // Extract byte count and data
       uint8_t bytecount = read_buf_[2];
       const uint8_t *data = &read_buf_[3];
 
-      // Find matching read item (reg & count)
       bool matched = false;
-      for (auto &it : this->reads_) {
-        if (it.reg == read_reg_ && it.count == read_count_) {
-          matched = true;
-          // handle binary/text sensors first
-          if (it.binary_sensor) {
-            // read first register as uint16
-            uint16_t val = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-            bool state = (val & it.bitmask) != 0;
-            it.binary_sensor->publish_state(state);
-          } else if (it.text_sensor) {
-            // publish raw hex or decimal string of first register
-            uint16_t val = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-            char buf[16];
-            snprintf(buf, sizeof(buf), "%u", val);
-            it.text_sensor->publish_state(std::string(buf));
-          } else if (it.sensor) {
-            // numeric sensor: support types
-            if (it.type == TYPE_UINT16) {
-              uint16_t v = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-              it.sensor->publish_state(static_cast<float>(v) * it.scale);
-            } else if (it.type == TYPE_INT16) {
-              int16_t v = (static_cast<int16_t>(data[0]) << 8) | data[1];
-              it.sensor->publish_state(static_cast<float>(v) * it.scale);
-            } else if (it.type == TYPE_UINT32) {
-              // big-endian: reg0 high word, reg1 low word
-              if (bytecount >= 4) {
-                uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
-                uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
-                uint32_t v = (hi << 16) | lo;
-                it.sensor->publish_state(static_cast<float>(v) * it.scale);
-              }
-            } else if (it.type == TYPE_UINT32_R) {
-              // reversed 32-bit: reg0 low word, reg1 high word
-              if (bytecount >= 4) {
-                uint32_t lo = (static_cast<uint32_t>(data[0]) << 8) | data[1];
-                uint32_t hi = (static_cast<uint32_t>(data[2]) << 8) | data[3];
-                uint32_t v = (lo << 16) | hi;
-                it.sensor->publish_state(static_cast<float>(v) * it.scale);
+
+      // Find blok der matcher
+      for (auto &b : this->blocks_) {
+        if (b.start_reg == read_reg_ && b.count == read_count_) {
+
+          for (auto *it : b.items) {
+            uint16_t offset = (it->reg - b.start_reg) * 2;
+            if (offset + 1 >= bytecount) {
+              ESP_LOGW(TAG, "Offset out of range for reg=0x%04X", it->reg);
+              continue;
+            }
+            const uint8_t *ptr = data + offset;
+
+            if (it->binary_sensor) {
+              uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
+              bool state = (v & it->bitmask) != 0;
+              it->binary_sensor->publish_state(state);
+            } else if (it->text_sensor) {
+              uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
+              char buf[16];
+              snprintf(buf, sizeof(buf), "%u", v);
+              it->text_sensor->publish_state(std::string(buf));
+            } else if (it->sensor) {
+              if (it->type == TYPE_UINT16) {
+                uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
+                it->sensor->publish_state(static_cast<float>(v) * it->scale);
+              } else if (it->type == TYPE_INT16) {
+                int16_t v = (static_cast<int16_t>(ptr[0]) << 8) | ptr[1];
+                it->sensor->publish_state(static_cast<float>(v) * it->scale);
+              } else if (it->type == TYPE_UINT32) {
+                if (offset + 3 >= bytecount) {
+                  ESP_LOGW(TAG, "UINT32 out of range for reg=0x%04X", it->reg);
+                } else {
+                  uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
+                  uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+                  uint32_t v = (hi << 16) | lo;
+                  it->sensor->publish_state(static_cast<float>(v) * it->scale);
+                }
+              } else if (it->type == TYPE_UINT32_R) {
+                if (offset + 3 >= bytecount) {
+                  ESP_LOGW(TAG, "UINT32_R out of range for reg=0x%04X", it->reg);
+                } else {
+                  uint32_t lo = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
+                  uint32_t hi = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+                  uint32_t v = (lo << 16) | hi;
+                  it->sensor->publish_state(static_cast<float>(v) * it->scale);
+                }
               }
             }
           }
+
+          matched = true;
           break;
         }
       }
 
       if (!matched) {
-        ESP_LOGW(TAG, "Received response for reg=0x%04X count=%u but no matching read item", read_reg_, read_count_);
+        ESP_LOGW(TAG, "Received response for reg=0x%04X count=%u but no matching block", read_reg_, read_count_);
       }
 
-      // Reset state for next read
       read_state_ = IDLE;
       read_got_ = 0;
       return;
     }
 
-    // Timeout handling
     if (millis() - read_start_ms_ > read_timeout_ms_) {
       ESP_LOGW(TAG, "Timeout waiting for Modbus response reg=0x%04X", read_reg_);
       read_state_ = IDLE;
@@ -331,12 +539,8 @@ void CustomModbus::process_writes() {
     // We do not wait for response here; response will be handled by process_reads if it arrives.
   } else {
     // Masked write: read current register, apply mask, write back
-    // Synchronous read/write would be more robust; here we queue a read and then a write.
-    // For simplicity, perform a read now and then write single with masked value (blocking read with timeout).
-    // NOTE: keep this short to avoid blocking main loop too long.
     uint8_t resp[64];
-    uint8_t resp_len = 0;
-    // Try to read register directly (blocking-ish with small timeout)
+
     // Build and send read request
     uint8_t req[8];
     req[0] = this->slave_id_;
@@ -351,7 +555,7 @@ void CustomModbus::process_writes() {
     this->uart_parent_->write_array(req, 8);
     this->uart_parent_->flush();
 
-    // small wait loop for response (non-blocking but with short timeout)
+    // small wait loop for response
     uint32_t start = millis();
     uint8_t got = 0;
     while (millis() - start < 200) {
@@ -360,17 +564,15 @@ void CustomModbus::process_writes() {
         int to_read = std::min(static_cast<int>(sizeof(resp) - got), static_cast<int>(avail));
         this->uart_parent_->read_array(resp + got, to_read);
         got += to_read;
-        // minimal validation
         if (got >= 7) break;
       }
       delay(2);
     }
     if (got >= 7) {
-      // parse current value
       if (resp[0] == this->slave_id_ && resp[1] == 0x03) {
         uint16_t cur = (static_cast<uint16_t>(resp[3]) << 8) | resp[4];
         uint16_t newv = (cur & ~w.mask) | (w.value & w.mask);
-        // send write single
+
         uint8_t frame[8];
         frame[0] = this->slave_id_;
         frame[1] = 0x06;
@@ -394,5 +596,3 @@ void CustomModbus::process_writes() {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
-
