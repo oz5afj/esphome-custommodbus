@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import uart, number
+from esphome.components import uart, switch
 from esphome.const import (
     CONF_ID,
     CONF_DISABLED_BY_DEFAULT,
@@ -15,15 +15,12 @@ CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDev
 
 PLATFORM_SCHEMA = cv.Schema(
     {
-        cv.GenerateID(): cv.declare_id(number.Number),
+        cv.GenerateID(): cv.declare_id(switch.Switch),
         cv.Optional("name"): cv.string,
         cv.Required("custommodbus_id"): cv.use_id(CustomModbus),
         cv.Required("slave_id"): cv.int_range(min=1, max=247),
         cv.Required("register"): cv.hex_uint16_t,
-        cv.Optional("min_value"): cv.float_,
-        cv.Optional("max_value"): cv.float_,
-        cv.Optional("step"): cv.float_,
-        cv.Optional("unit_of_measurement"): cv.string,
+        cv.Optional("bitmask"): cv.hex_uint16_t,
         cv.Optional(CONF_ICON): cv.icon,
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
@@ -39,22 +36,17 @@ async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     await uart.register_uart_device(parent, config)
 
-    # Ensure defaults so setup_entity/setup_number_core_ do not raise KeyError
+    # Ensure defaults so setup_entity/setup_switch_core_ do not raise KeyError
     config.setdefault(CONF_DISABLED_BY_DEFAULT, False)
     config.setdefault(CONF_RESTORE_MODE, "RESTORE_DEFAULT")
 
-    # Provide sensible defaults if user omitted min/max/step
-    min_value = config.get("min_value", 0.0)
-    max_value = config.get("max_value", 100.0)
-    step = config.get("step", 1.0)
-
-    num = await number.new_number(
-        config,
-        min_value=min_value,
-        max_value=max_value,
-        step=step,
-    )
+    sw = await switch.new_switch(config)
 
     cg.add(parent.set_slave_id(config["slave_id"]))
 
-    # If you want to write number changes back to Modbus, add callbacks here.
+    if "bitmask" in config:
+        cg.add(sw.add_on_turn_on(parent.write_bitmask(config["register"], config["bitmask"], True)))
+        cg.add(sw.add_on_turn_off(parent.write_bitmask(config["register"], config["bitmask"], False)))
+    else:
+        cg.add(sw.add_on_turn_on(parent.write_single(config["register"], 1)))
+        cg.add(sw.add_on_turn_off(parent.write_single(config["register"], 0)))
