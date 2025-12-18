@@ -5,6 +5,7 @@
 #include "esphome/components/sensor/sensor.h"
 #include <vector>
 #include <algorithm>
+#include <map>   // <-- NYT til EEPROM-safe write tracking
 
 // Forward declarations for binary/text sensors to avoid requiring their headers here
 namespace esphome {
@@ -60,7 +61,6 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
   // API som Python kalder
   void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
-  // Overload for bagudkompatibilitet med auto-genereret main.cpp (sender et tal for data_type)
   void add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, esphome::sensor::Sensor *s);
 
   void add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binary_sensor::BinarySensor *bs);
@@ -92,12 +92,17 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
   bool use_grouped_reads_{false};
 
-  // --- Asynkrone read‑state medlemmer (bruges af custommodbus.cpp) ---
+  // --- EEPROM-safe write tracking (NYT) ---
+  std::map<uint16_t, uint16_t> last_written_value_;
+  std::map<uint16_t, uint32_t> last_write_time_;
+  static const uint32_t WRITE_COOLDOWN_MS = 30000; // 30 seconds
+
+  // --- Asynkrone read‑state medlemmer ---
   enum ReadState { IDLE = 0, WAITING = 1, PROCESSING = 2 };
 
   ReadState read_state_{IDLE};
   uint32_t read_start_ms_{0};
-  uint32_t read_timeout_ms_{1000}; // default timeout i ms (kan justeres)
+  uint32_t read_timeout_ms_{1000};
   uint8_t read_expected_{0};
   uint8_t read_buf_[64];
   uint8_t read_got_{0};
@@ -108,6 +113,10 @@ class CustomModbus : public Component, public uart::UARTDevice {
   // (Beholdes for kompatibilitet – ikke brugt i den nye kode)
   void start_read(uint16_t reg, uint8_t count);
   void handle_read_state();
+
+  // --- EEPROM-safe helpers (NYT) ---
+  bool should_write(uint16_t reg, uint16_t value);
+  void record_write(uint16_t reg, uint16_t value);
 };
 
 }  // namespace custommodbus
