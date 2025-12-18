@@ -28,4 +28,3 @@ def to_code(config):
     cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
 
     cg.add(var.set_use_grouped_reads(config[CONF_USE_GROUPED_READS]))
-
