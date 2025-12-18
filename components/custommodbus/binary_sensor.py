@@ -20,6 +20,9 @@ PLATFORM_SCHEMA = cv.Schema(
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
+# ESPHome loader forventer CONFIG_SCHEMA
+CONFIG_SCHEMA = PLATFORM_SCHEMA
+
 
 async def to_code(config):
     parent = await cg.get_variable(config[CONF_ID])
