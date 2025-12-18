@@ -2,7 +2,6 @@ import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import uart, switch
 from esphome.const import (
-    CONF_ID,
     CONF_DISABLED_BY_DEFAULT,
     CONF_ICON,
     CONF_ENTITY_CATEGORY,
@@ -29,12 +28,10 @@ PLATFORM_SCHEMA = cv.Schema(
 
 CONFIG_SCHEMA = PLATFORM_SCHEMA
 
-
 async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     await uart.register_uart_device(parent, config)
 
-    # Sikr default for disabled_by_default så setup_entity ikke kaster KeyError
     config.setdefault(CONF_DISABLED_BY_DEFAULT, False)
 
     sw = await switch.new_switch(config)
