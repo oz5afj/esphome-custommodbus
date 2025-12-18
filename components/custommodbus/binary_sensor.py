@@ -3,9 +3,9 @@ import esphome.config_validation as cv
 from esphome.components import uart, binary_sensor
 from esphome.const import (
     CONF_DISABLED_BY_DEFAULT,
-    CONF_RESTORE_MODE,
     CONF_ICON,
     CONF_ENTITY_CATEGORY,
+    CONF_DEVICE_CLASS,
 )
 
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
@@ -21,9 +21,8 @@ PLATFORM_SCHEMA = cv.Schema(
         cv.Required("bitmask"): cv.hex_uint16_t,
         cv.Optional(CONF_ICON): cv.icon,
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
-        cv.Optional("device_class"): cv.string,
+        cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
-        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT"): cv.string,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
@@ -33,9 +32,6 @@ CONFIG_SCHEMA = PLATFORM_SCHEMA
 async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     await uart.register_uart_device(parent, config)
-
-    config.setdefault(CONF_DISABLED_BY_DEFAULT, False)
-    config.setdefault(CONF_RESTORE_MODE, "RESTORE_DEFAULT")
 
     bs = await binary_sensor.new_binary_sensor(config)
 
