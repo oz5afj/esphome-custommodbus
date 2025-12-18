@@ -7,6 +7,7 @@ from esphome.const import (
     CONF_ICON,
     CONF_ENTITY_CATEGORY,
     CONF_DEVICE_CLASS,
+    CONF_DISABLED_BY_DEFAULT,
 )
 
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
@@ -29,6 +30,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_ICON): cv.icon,
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
+
+        # ✅ DENNE LINJE MANGLEDE
+        cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
