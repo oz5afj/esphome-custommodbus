@@ -3,6 +3,7 @@ import esphome.config_validation as cv
 from esphome.components import uart, switch
 from esphome.const import (
     CONF_DISABLED_BY_DEFAULT,
+    CONF_RESTORE_MODE,
     CONF_ICON,
     CONF_ENTITY_CATEGORY,
     CONF_DEVICE_CLASS,
@@ -23,16 +24,21 @@ PLATFORM_SCHEMA = cv.Schema(
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
+        # Behold restore_mode i schema med en numerisk default så codegen får en værdi
+        cv.Optional(CONF_RESTORE_MODE, default=0): cv.int_,
     }
 ).extend(uart.UART_DEVICE_SCHEMA)
 
 CONFIG_SCHEMA = PLATFORM_SCHEMA
 
+
 async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     await uart.register_uart_device(parent, config)
 
+    # Sikre defaults så setup_entity/setup_switch_core_ ikke kaster KeyError
     config.setdefault(CONF_DISABLED_BY_DEFAULT, False)
+    config.setdefault(CONF_RESTORE_MODE, 0)
 
     sw = await switch.new_switch(config)
 
