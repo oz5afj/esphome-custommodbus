@@ -1,10 +1,12 @@
 #pragma once
 
 #include "esphome/components/switch/switch.h"
-#include "custommodbus.h"
 
 namespace esphome {
 namespace custommodbus {
+
+// Forward declaration for correct include order
+class CustomModbus;
 
 class CustomModbusSwitch : public switch_::Switch {
  public:
@@ -14,14 +16,7 @@ class CustomModbusSwitch : public switch_::Switch {
   void set_slave_id(uint8_t id) { slave_id_ = id; }
 
  protected:
-  void write_state(bool state) override {
-    if (bitmask_ != 0) {
-      parent_->write_bitmask(register_, bitmask_, state);
-    } else {
-      parent_->write_single(register_, state ? 1 : 0);
-    }
-    publish_state(state);
-  }
+  void write_state(bool state) override;
 
   CustomModbus *parent_{nullptr};
   uint16_t register_{0};
