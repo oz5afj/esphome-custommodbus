@@ -15,7 +15,6 @@ custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 CustomModbusSwitch = custommodbus_ns.class_("CustomModbusSwitch", switch.Switch)
 
-# ESPHome 2025.x restore modes
 RESTORE_MODES = {
     "RESTORE_DEFAULT_OFF": switch.SwitchRestoreMode.RESTORE_DEFAULT_OFF,
     "RESTORE_DEFAULT_ON": switch.SwitchRestoreMode.RESTORE_DEFAULT_ON,
