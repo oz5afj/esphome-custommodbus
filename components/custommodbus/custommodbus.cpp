@@ -607,7 +607,34 @@ void CustomModbus::process_writes() {
     }
   }
 }
+bool CustomModbus::should_write(uint16_t reg, uint16_t value) {
+  uint32_t now = millis();
+
+  if (last_written_value_.count(reg)) {
+    uint16_t last_value = last_written_value_[reg];
+    if (last_value == value) {
+      ESP_LOGI(TAG, "Skip write reg=0x%04X (unchanged value %u)", reg, value);
+      return false;
+    }
+  }
+
+  if (last_write_time_.count(reg)) {
+    uint32_t last_time = last_write_time_[reg];
+    if (now - last_time < WRITE_COOLDOWN_MS) {
+      ESP_LOGI(TAG, "Skip write reg=0x%04X (cooldown active)", reg);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void CustomModbus::record_write(uint16_t reg, uint16_t value) {
+  last_written_value_[reg] = value;
+  last_write_time_[reg] = millis();
+}
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
