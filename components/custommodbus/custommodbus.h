@@ -1,7 +1,7 @@
 #pragma once
 
-// #include "esphome.h"
-#include "esphome/core/component.h"
+#include "esphome.h"
+
 
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
@@ -123,4 +123,5 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
