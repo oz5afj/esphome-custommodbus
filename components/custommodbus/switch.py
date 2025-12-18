@@ -15,11 +15,12 @@ custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component, uart.UARTDevice)
 CustomModbusSwitch = custommodbus_ns.class_("CustomModbusSwitch", switch.Switch)
 
+# ✅ ESPHome 2025.x bruger SWITCH_* enum-navne i C++
 RESTORE_MODES = {
-    "RESTORE_DEFAULT_OFF": switch.SwitchRestoreMode.RESTORE_DEFAULT_OFF,
-    "RESTORE_DEFAULT_ON": switch.SwitchRestoreMode.RESTORE_DEFAULT_ON,
-    "ALWAYS_OFF": switch.SwitchRestoreMode.ALWAYS_OFF,
-    "ALWAYS_ON": switch.SwitchRestoreMode.ALWAYS_ON,
+    "RESTORE_DEFAULT_OFF": switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF,
+    "RESTORE_DEFAULT_ON": switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_ON,
+    "ALWAYS_OFF": switch.SwitchRestoreMode.SWITCH_ALWAYS_OFF,
+    "ALWAYS_ON": switch.SwitchRestoreMode.SWITCH_ALWAYS_ON,
 }
 
 CONFIG_SCHEMA = cv.Schema(
