@@ -4,6 +4,7 @@
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
 #include <vector>
+#include <algorithm>
 
 // Forward declarations for binary/text sensors to avoid requiring their headers here
 namespace esphome {
@@ -39,6 +40,12 @@ struct WriteItem {
   bool use_mask;
 };
 
+struct ReadBlock {
+  uint16_t start_reg;
+  uint8_t count;
+  std::vector<ReadItem*> items;
+};
+
 // Bemærk: brug uart::-navnerummet for at få de korrekte typer
 class CustomModbus : public Component, public uart::UARTDevice {
  public:
@@ -47,6 +54,9 @@ class CustomModbus : public Component, public uart::UARTDevice {
   // Binding fra Python: ESPHome genererer kaldet set_uart_parent
   void set_uart_parent(uart::UARTComponent *parent) { this->uart_parent_ = parent; }
   void set_slave_id(uint8_t id) { this->slave_id_ = id; }
+
+  // Valgfri grouped-reads
+  void set_use_grouped_reads(bool v) { this->use_grouped_reads_ = v; }
 
   // API som Python kalder
   void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
@@ -69,6 +79,8 @@ class CustomModbus : public Component, public uart::UARTDevice {
   bool read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len);
   uint16_t crc16(uint8_t *buf, uint8_t len);
 
+  void build_read_blocks();
+
   // uart::UARTComponent pointer type (sættes af ESPHome via set_uart_parent)
   uart::UARTComponent *uart_parent_{nullptr};
   uint8_t slave_id_{1};
@@ -76,6 +88,9 @@ class CustomModbus : public Component, public uart::UARTDevice {
   // Læse- og skrivekøer
   std::vector<ReadItem> reads_;
   std::vector<WriteItem> writes_;
+  std::vector<ReadBlock> blocks_;
+
+  bool use_grouped_reads_{false};
 
   // --- Asynkrone read‑state medlemmer (bruges af custommodbus.cpp) ---
   enum ReadState { IDLE = 0, WAITING = 1, PROCESSING = 2 };
@@ -90,7 +105,7 @@ class CustomModbus : public Component, public uart::UARTDevice {
   uint8_t read_count_{0};
   size_t read_index_{0};
 
-  // Asynkrone read helper metoder (deklarationer)
+  // (Beholdes for kompatibilitet – ikke brugt i den nye kode)
   void start_read(uint16_t reg, uint8_t count);
   void handle_read_state();
 };
