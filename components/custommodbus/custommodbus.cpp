@@ -174,6 +174,10 @@ void CustomModbus::process_reads() {
     read_reg_ = reg;
     read_count_ = count;
 
+    
+    // ✅ Nulstil buffer før vi begynder at læse
+    memset(read_buf_, 0, sizeof(read_buf_));
+
     // send request
     uint8_t frame[8];
     frame[0] = this->slave_id_;
@@ -390,4 +394,5 @@ void CustomModbus::process_writes() {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
