@@ -487,13 +487,13 @@ this->last_read_ms_ = millis();
               if (it->type == TYPE_UINT16) {
                 uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
                 float raw = static_cast<float>(v) * it->scale; 
-                this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                this->publish_sensor_if_needed(it, raw);   // hvis it er reference
                  // eller for pointer i grouped reads: 
                 this->publish_sensor_if_needed(it, raw);
               } else if (it->type == TYPE_INT16) {
                 int16_t v = (static_cast<int16_t>(ptr[0]) << 8) | ptr[1];
                 float raw = static_cast<float>(v) * it->scale;
-                this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                this->publish_sensor_if_needed(it, raw);   // hvis it er reference
                 // eller for pointer i grouped reads:
                 this->publish_sensor_if_needed(it, raw);
 
@@ -505,7 +505,7 @@ this->last_read_ms_ = millis();
                   uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                   uint32_t v = (hi << 16) | lo;
                   float raw = static_cast<float>(v) * it->scale;
-                  this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                  this->publish_sensor_if_needed(it, raw);   // hvis it er reference
                   // eller for pointer i grouped reads:
                   this->publish_sensor_if_needed(it, raw);
 
@@ -518,7 +518,7 @@ this->last_read_ms_ = millis();
                   uint32_t hi = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                   uint32_t v = (lo << 16) | hi;
                   float raw = static_cast<float>(v) * it->scale;
-                  this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                  this->publish_sensor_if_needed(it, raw);   // hvis it er reference
                   // eller for pointer i grouped reads:
                   this->publish_sensor_if_needed(it, raw);
 
@@ -678,6 +678,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
