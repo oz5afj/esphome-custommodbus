@@ -76,6 +76,12 @@ class CustomModbus : public Component, public uart::UARTDevice {
   void loop() override;
 
  protected:
+  // loop begrænsning test 
+  uint32_t last_publish_ms_{0};
+  static constexpr uint32_t PUBLISH_INTERVAL_MS = 2000; // 2s
+  float last_published_value_{NAN};
+  float publish_deadband_ = 0.05f; // juster efter behov
+  // loop begrænsing test slut
   void process_reads();
   void process_writes();
   bool read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len);
@@ -123,6 +129,7 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
