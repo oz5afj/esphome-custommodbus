@@ -121,16 +121,8 @@ class CustomModbus : public Component, public uart::UARTDevice {
   void record_write(uint16_t reg, uint16_t value);
 };
 
-public:
-  void set_publish_cooldown(uint32_t ms) { this->publish_cooldown_ms_ = ms; }
-
-protected:
-  uint32_t publish_cooldown_ms_{1000}; // default 1s
-  uint32_t last_publish_ms_{0};
-  std::map<uint16_t, float> last_published_value_; // track per-reg
-
-
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
