@@ -233,7 +233,7 @@ void CustomModbus::process_reads() {
       if (now - this->last_read_ms_ < this->read_interval_ms_) {
          return;
        }
-     if (this->reads_.empty()) return;
+       if (this->reads_.empty()) return;
 
       // rotate through reads_ to spread queries
       if (read_index_ >= this->reads_.size()) read_index_ = 0;
@@ -390,6 +390,10 @@ void CustomModbus::process_reads() {
   // MODE 2: grouped-reads
   // If idle, start a new block read
   if (read_state_ == IDLE) {
+     uint32_t now = millis();
+     if (now - this->last_read_ms_ < this->read_interval_ms_) {
+        return;
+     }
     if (this->blocks_.empty()) return;
 
     if (read_index_ >= this->blocks_.size()) read_index_ = 0;
@@ -421,7 +425,7 @@ void CustomModbus::process_reads() {
 
     this->uart_parent_->write_array(frame, 8);
     this->uart_parent_->flush();
-this->last_read_ms_ = millis();
+    this->last_read_ms_ = millis();
 
 
     // næste blok næste gang
@@ -677,6 +681,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
