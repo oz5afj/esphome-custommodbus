@@ -183,12 +183,25 @@ void CustomModbus::setup() {
 }
 
 void CustomModbus::loop() {
+  // Throttle hele loopet: sørg for mindst X ms mellem iterationer der starter nye reads/writes
+  // Dette er en minimal ændring der kræver ingen andre ændringer i koden.
+  static const uint32_t LOOP_THROTTLE_MS = 2000; // 2 sekunder mellem "aktive" iterationer
+  static uint32_t last_loop_ms = 0;
+  uint32_t now = millis();
+
+  // Hvis det er for tidligt, returnér hurtigt (ingen blocking delay)
+  if (now - last_loop_ms < LOOP_THROTTLE_MS) {
+    return;
+  }
+  last_loop_ms = now;
+
   // Process incoming bytes / state machine
   this->process_reads();
 
   // Process any pending writes (non-blocking)
   this->process_writes();
 }
+
 
 // --- Internal: send a Modbus read request (function 0x03) ---
 bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, uint8_t &resp_len) {
@@ -636,6 +649,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
