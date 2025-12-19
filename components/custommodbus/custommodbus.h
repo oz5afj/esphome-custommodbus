@@ -2,13 +2,14 @@
 
 #include "esphome.h"
 
+
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
 #include <vector>
 #include <algorithm>
-#include <map>   // <-- NYT til tracking af sidste publicerede værdier
+#include <map>   // <-- NYT til EEPROM-safe write tracking
 
-// Forward declarations for binary/text sensors to undgå at inkludere deres headers her
+// Forward declarations for binary/text sensors to avoid requiring their headers here
 namespace esphome {
 namespace binary_sensor { class BinarySensor; }
 namespace text_sensor { class TextSensor; }
@@ -60,11 +61,6 @@ class CustomModbus : public Component, public uart::UARTDevice {
   // Valgfri grouped-reads
   void set_use_grouped_reads(bool v) { this->use_grouped_reads_ = v; }
 
-  // Konfigurerbare parametre fra Python (tilføjet)
-  void set_read_interval(uint32_t ms) { this->read_interval_ms_ = ms; }
-  void set_publish_cooldown(uint32_t ms) { this->publish_cooldown_ms_ = ms; }
-  void set_publish_threshold(float t) { this->publish_threshold_ = t; }
-
   // API som Python kalder
   void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
   void add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, esphome::sensor::Sensor *s);
@@ -86,9 +82,6 @@ class CustomModbus : public Component, public uart::UARTDevice {
   uint16_t crc16(uint8_t *buf, uint8_t len);
 
   void build_read_blocks();
-
-  // Hjælpefunktion til rate-limited publicering (implementeres i .cpp)
-  void publish_sensor_if_needed(ReadItem *it, float value);
 
   // uart::UARTComponent pointer type (sættes af ESPHome via set_uart_parent)
   uart::UARTComponent *uart_parent_{nullptr};
@@ -119,15 +112,6 @@ class CustomModbus : public Component, public uart::UARTDevice {
   uint8_t read_count_{0};
   size_t read_index_{0};
 
-  // Poll / publish kontrol (tilføjet)
-  uint32_t read_interval_ms_{1000};   // default 1000 ms
-  uint32_t last_read_ms_{0};
-
-  uint32_t publish_cooldown_ms_{1000}; // default 1000 ms
-  uint32_t last_publish_ms_{0};
-  std::map<uint16_t, float> last_published_value_;
-  float publish_threshold_{0.1f};
-
   // (Beholdes for kompatibilitet – ikke brugt i den nye kode)
   void start_read(uint16_t reg, uint8_t count);
   void handle_read_state();
@@ -137,5 +121,16 @@ class CustomModbus : public Component, public uart::UARTDevice {
   void record_write(uint16_t reg, uint16_t value);
 };
 
+public:
+  void set_publish_cooldown(uint32_t ms) { this->publish_cooldown_ms_ = ms; }
+
+protected:
+  uint32_t publish_cooldown_ms_{1000}; // default 1s
+  uint32_t last_publish_ms_{0};
+  std::map<uint16_t, float> last_published_value_; // track per-reg
+
+
 }  // namespace custommodbus
 }  // namespace esphome
+
+
