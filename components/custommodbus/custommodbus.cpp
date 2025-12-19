@@ -334,17 +334,20 @@ void CustomModbus::process_reads() {
               // numeric sensor: support types
               if (it.type == TYPE_UINT16) {
                 uint16_t v = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-                it.sensor->publish_state(static_cast<float>(v) * it.scale);
+                float raw = static_cast<float>(v) * it.scale;
+                this->publish_sensor_if_needed(&it, raw);
               } else if (it.type == TYPE_INT16) {
                 int16_t v = (static_cast<int16_t>(data[0]) << 8) | data[1];
-                it.sensor->publish_state(static_cast<float>(v) * it.scale);
+                float raw = static_cast<float>(v) * it.scale;
+                this->publish_sensor_if_needed(&it, raw);
               } else if (it.type == TYPE_UINT32) {
                 // big-endian: reg0 high word, reg1 low word
                 if (bytecount >= 4) {
                   uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
                   uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
                   uint32_t v = (hi << 16) | lo;
-                  it.sensor->publish_state(static_cast<float>(v) * it.scale);
+                 float raw = static_cast<float>(v) * it.scale;
+                 this->publish_sensor_if_needed(&it, raw);
                 }
               } else if (it.type == TYPE_UINT32_R) {
                 // reversed 32-bit: reg0 low word, reg1 high word
@@ -414,7 +417,6 @@ void CustomModbus::process_reads() {
     frame[6] = static_cast<uint8_t>(crc & 0xFF);
     frame[7] = static_cast<uint8_t>((crc >> 8) & 0xFF);
 
-    this->uart_parent_->write_array(frame, 8);
     this->uart_parent_->write_array(frame, 8);
     this->uart_parent_->flush();
 this->last_read_ms_ = millis();
@@ -678,6 +680,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
