@@ -328,11 +328,8 @@ void CustomModbus::process_reads() {
               // numeric sensor: support types
               if (it.type == TYPE_UINT16) {
                 uint16_t v = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-                float value = static_cast<float>(v) * it.scale;
-                if (this->should_publish(it.reg, value)) {
-                it.sensor->publish_state(value);
-                }         
-              else if (it.type == TYPE_INT16) {
+                it.sensor->publish_state(static_cast<float>(v) * it.scale);
+              } else if (it.type == TYPE_INT16) {
                 int16_t v = (static_cast<int16_t>(data[0]) << 8) | data[1];
                 it.sensor->publish_state(static_cast<float>(v) * it.scale);
               } else if (it.type == TYPE_UINT32) {
@@ -639,6 +636,10 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
+
+
+
 
 
 
