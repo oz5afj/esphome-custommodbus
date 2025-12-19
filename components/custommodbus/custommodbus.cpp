@@ -1,5 +1,6 @@
- #include "custommodbus.h"
+#include "custommodbus.h"
 #include "esphome/core/log.h"
+#include <cmath>
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -228,7 +229,11 @@ void CustomModbus::process_reads() {
 
     // If idle, start a new read if we have configured reads
     if (read_state_ == IDLE) {
-      if (this->reads_.empty()) return;
+      uint32_t now = millis();
+      if (now - this->last_read_ms_ < this->read_interval_ms_) {
+         return;
+       }
+     if (this->reads_.empty()) return;
 
       // rotate through reads_ to spread queries
       if (read_index_ >= this->reads_.size()) read_index_ = 0;
@@ -262,6 +267,7 @@ void CustomModbus::process_reads() {
 
       this->uart_parent_->write_array(frame, 8);
       this->uart_parent_->flush();
+      this->last_read_ms_ = millis();
 
       // advance rotation index for next time
       read_index_++;
@@ -409,7 +415,10 @@ void CustomModbus::process_reads() {
     frame[7] = static_cast<uint8_t>((crc >> 8) & 0xFF);
 
     this->uart_parent_->write_array(frame, 8);
+    this->uart_parent_->write_array(frame, 8);
     this->uart_parent_->flush();
+this->last_read_ms_ = millis();
+
 
     // næste blok næste gang
     read_index_++;
@@ -477,10 +486,17 @@ void CustomModbus::process_reads() {
             } else if (it->sensor) {
               if (it->type == TYPE_UINT16) {
                 uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
-                it->sensor->publish_state(static_cast<float>(v) * it->scale);
+                float raw = static_cast<float>(v) * it->scale; 
+                this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                 // eller for pointer i grouped reads: 
+                this->publish_sensor_if_needed(it, raw);
               } else if (it->type == TYPE_INT16) {
                 int16_t v = (static_cast<int16_t>(ptr[0]) << 8) | ptr[1];
-                it->sensor->publish_state(static_cast<float>(v) * it->scale);
+                float raw = static_cast<float>(v) * it->scale;
+                this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                // eller for pointer i grouped reads:
+                this->publish_sensor_if_needed(it, raw);
+
               } else if (it->type == TYPE_UINT32) {
                 if (offset + 3 >= bytecount) {
                   ESP_LOGW(TAG, "UINT32 out of range for reg=0x%04X", it->reg);
@@ -488,7 +504,11 @@ void CustomModbus::process_reads() {
                   uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
                   uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                   uint32_t v = (hi << 16) | lo;
-                  it->sensor->publish_state(static_cast<float>(v) * it->scale);
+                  float raw = static_cast<float>(v) * it->scale;
+                  this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                  // eller for pointer i grouped reads:
+                  this->publish_sensor_if_needed(it, raw);
+
                 }
               } else if (it->type == TYPE_UINT32_R) {
                 if (offset + 3 >= bytecount) {
@@ -497,7 +517,11 @@ void CustomModbus::process_reads() {
                   uint32_t lo = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
                   uint32_t hi = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                   uint32_t v = (lo << 16) | hi;
-                  it->sensor->publish_state(static_cast<float>(v) * it->scale);
+                  float raw = static_cast<float>(v) * it->scale;
+                  this->publish_sensor_if_needed(&it, raw);   // hvis it er reference
+                  // eller for pointer i grouped reads:
+                  this->publish_sensor_if_needed(it, raw);
+
                 }
               }
             }
@@ -525,6 +549,24 @@ void CustomModbus::process_reads() {
     }
   }
 }
+
+void CustomModbus::publish_sensor_if_needed(ReadItem *it, float value) {
+  uint32_t now = millis();
+  float last = 0.0f;
+  if (this->last_published_value_.count(it->reg)) last = this->last_published_value_[it->reg];
+
+  float threshold = this->publish_threshold_;
+
+  if ((now - this->last_publish_ms_ >= this->publish_cooldown_ms_) && (std::fabs(value - last) >= threshold)) {
+    it->sensor->publish_state(value);
+    this->last_published_value_[it->reg] = value;
+    this->last_publish_ms_ = now;
+  }
+}
+
+
+
+
 
 // --- Internal: process pending writes (simple implementation) ---
 void CustomModbus::process_writes() {
@@ -636,5 +678,6 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
