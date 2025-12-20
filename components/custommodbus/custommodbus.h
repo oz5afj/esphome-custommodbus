@@ -2,7 +2,6 @@
 
 #include "esphome.h"
 
-
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
 #include <vector>
@@ -34,6 +33,10 @@ struct ReadItem {
   esphome::binary_sensor::BinarySensor *binary_sensor;
   esphome::text_sensor::TextSensor *text_sensor;
   uint16_t bitmask;
+  // preiss - START: per-sensor indstillinger
+  int decimals = 2;                 // antal decimaler at runde til
+  float delta_threshold = 0.05f;    // tærskel for at publicere ændring
+  // preiss - END
 };
 
 struct WriteItem {
@@ -62,8 +65,10 @@ class CustomModbus : public Component, public uart::UARTDevice {
   void set_use_grouped_reads(bool v) { this->use_grouped_reads_ = v; }
 
   // API som Python kalder
-  void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s);
-  void add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, esphome::sensor::Sensor *s);
+  // preiss - START: opdateret add_read_sensor med decimals og delta_threshold
+  void add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s, int decimals = 2, float delta_threshold = 0.05f);
+  void add_read_sensor(uint16_t reg, uint8_t count, uint8_t type_as_int, float scale, esphome::sensor::Sensor *s, int decimals = 2, float delta_threshold = 0.05f);
+  // preiss - END
 
   void add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binary_sensor::BinarySensor *bs);
   void add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts);
@@ -80,7 +85,6 @@ class CustomModbus : public Component, public uart::UARTDevice {
   uint32_t last_publish_ms_{0};
   static constexpr uint32_t PUBLISH_INTERVAL_MS = 2000; // 2s
   float last_published_value_{NAN};
-  float publish_deadband_ = 0.05f; // juster efter behov
   // loop begrænsing test slut
   void process_reads();
   void process_writes();
@@ -126,24 +130,10 @@ class CustomModbus : public Component, public uart::UARTDevice {
   bool should_write(uint16_t reg, uint16_t value);
   void record_write(uint16_t reg, uint16_t value);
 
-  // preiss - START: indsæt nye medlemmer og prototype for filtreret publicering
-  // Map til at huske sidste publicerede værdi per sensor (for at undgå oversvømmelse)
-  std::map<esphome::sensor::Sensor*, float> last_published_values_;
-  // Tærskel for hvornår vi sender en ændring (1 i 3. decimal = 0.001)
-  float publish_delta_threshold_ = 0.001f;
-  // Hjælpefunktion: afrund og publicer kun hvis ændring > threshold
-  void publish_sensor_filtered(esphome::sensor::Sensor *sensor, float value);
+  // preiss - START: publish helper med per-sensor decimals og threshold
+  void publish_sensor_filtered(esphome::sensor::Sensor *sensor, float value, int decimals, float threshold);
   // preiss - END
-
-
-
-
 };
 
 }  // namespace custommodbus
 }  // namespace esphome
-
-
-
-
-
