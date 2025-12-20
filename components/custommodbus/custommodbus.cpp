@@ -98,6 +98,16 @@ void CustomModbus::add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binar
   this->reads_.push_back(it);
 }
 
+void CustomModbus::add_number(uint16_t reg, CustomModbusNumber *num) {
+  if (!num) return;
+  num->set_parent(this);
+  num->set_register(reg);
+  // hvis YAML indeholder slave_id eller bitmask, skal generatoren sætte dem før add_number kaldes
+  this->numbers_.push_back({reg, num});
+  ESP_LOGI(TAG, "Registered number for reg=0x%04X", reg);
+}
+
+
 void CustomModbus::add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts) {
   ReadItem it;
   it.reg = reg;
@@ -696,4 +706,5 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
