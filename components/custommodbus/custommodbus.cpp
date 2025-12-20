@@ -6,6 +6,7 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/sensor/sensor.h"
+#include "number.h" // <-- tilføjet for CustomModbusNumber
 
 namespace esphome {
 namespace custommodbus {
@@ -27,6 +28,71 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
     }
   }
   return crc;
+}
+
+// --- SYNKRON HJÆLPEFUNKTION: læs register én gang (bruges i setup) ---
+// Returnerer true og sætter out_data/out_len ved succes, ellers false.
+bool CustomModbus::read_register_once(uint16_t reg, uint8_t count, uint8_t *out_data, uint8_t &out_len, uint32_t timeout_ms) {
+  if (!this->uart_parent_) return false;
+
+  uint8_t frame[8];
+  frame[0] = this->slave_id_;
+  frame[1] = 0x03;
+  frame[2] = static_cast<uint8_t>((reg >> 8) & 0xFF);
+  frame[3] = static_cast<uint8_t>(reg & 0xFF);
+  frame[4] = 0x00;
+  frame[5] = count;
+  uint16_t crc = this->crc16(frame, 6);
+  frame[6] = static_cast<uint8_t>(crc & 0xFF);
+  frame[7] = static_cast<uint8_t>((crc >> 8) & 0xFF);
+
+  // Ryd evt. gamle bytes
+  while (this->uart_parent_->available()) {
+    uint8_t tmp;
+    this->uart_parent_->read_array(&tmp, 1);
+  }
+
+  this->uart_parent_->write_array(frame, 8);
+  this->uart_parent_->flush();
+
+  uint32_t start = millis();
+  uint8_t got = 0;
+  uint8_t resp[64];
+  while (millis() - start < timeout_ms) {
+    size_t avail = this->uart_parent_->available();
+    if (avail) {
+      int to_read = std::min(static_cast<int>(sizeof(resp) - got), static_cast<int>(avail));
+      if (to_read > 0) {
+        this->uart_parent_->read_array(resp + got, to_read);
+        got += to_read;
+      }
+    }
+    if (got >= 5) {
+      // check slave and function
+      if (resp[0] != this->slave_id_ || resp[1] != 0x03) {
+        // ikke vores svar endnu - fortsæt
+      } else {
+        uint8_t bytecount = resp[2];
+        uint16_t expected_len = 3 + bytecount + 2; // header + data + crc
+        if (got >= expected_len) {
+          uint16_t recv_crc = (static_cast<uint16_t>(resp[expected_len - 1]) << 8) | resp[expected_len - 2];
+          uint16_t calc_crc = this->crc16(resp, expected_len - 2);
+          if (recv_crc == calc_crc) {
+            if (bytecount <= 60) {
+              memcpy(out_data, &resp[3], bytecount);
+              out_len = bytecount;
+              return true;
+            }
+          } else {
+            ESP_LOGW(TAG, "read_register_once CRC mismatch reg=0x%04X", reg);
+            return false;
+          }
+        }
+      }
+    }
+    delay(2);
+  }
+  return false; // timeout
 }
 
 // preiss - START: per-sensor publish med decimals og threshold
@@ -106,7 +172,6 @@ void CustomModbus::add_number(uint16_t reg, CustomModbusNumber *num) {
   this->numbers_.push_back({reg, num});
   ESP_LOGI(TAG, "Registered number for reg=0x%04X", reg);
 }
-
 
 void CustomModbus::add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts) {
   ReadItem it;
@@ -229,11 +294,94 @@ void CustomModbus::setup() {
   if (this->use_grouped_reads_) {
     this->build_read_blocks();
   }
+
+  // --- Initialiser numbers, binary_sensor og text_sensor ved opstart ---
+  // Læs aktuelle værdier fra inverteren så HA ikke starter med 0
+  if (!this->numbers_.empty() || !this->reads_.empty()) {
+    ESP_LOGI(TAG, "Reading initial values for numbers/binary/text sensors");
+    // 1) Numbers
+    for (auto &p : this->numbers_) {
+      uint16_t reg = p.first;
+      CustomModbusNumber *num = p.second;
+      if (!num) continue;
+
+      // Find evt. ReadItem for samme register for at få count/scale
+      uint8_t count = 1;
+      float scale = 1.0f;
+      for (auto &r : this->reads_) {
+        if (r.reg == reg) {
+          count = r.count;
+          scale = r.scale;
+          break;
+        }
+      }
+
+      uint8_t data[64];
+      uint8_t len = 0;
+      if (this->read_register_once(reg, count, data, len, 150)) {
+        if (count == 1 && len >= 2) {
+          uint16_t raw = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+          float value = static_cast<float>(raw) * scale;
+          num->publish_state(value);
+          ESP_LOGD(TAG, "Initial number reg=0x%04X value=%f (raw=%u scale=%f)", reg, value, raw, scale);
+        } else if (count == 2 && len >= 4) {
+          uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
+          uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+          uint32_t raw32 = (hi << 16) | lo;
+          float value = static_cast<float>(raw32) * scale;
+          num->publish_state(value);
+          ESP_LOGD(TAG, "Initial number reg=0x%04X value=%f (raw32=%u scale=%f)", reg, value, raw32, scale);
+        } else {
+          ESP_LOGW(TAG, "Unexpected length for number reg=0x%04X len=%u count=%u", reg, len, count);
+        }
+      } else {
+        ESP_LOGW(TAG, "Failed to read initial number reg=0x%04X", reg);
+      }
+      delay(20);
+    }
+
+    // 2) Binary sensors and text sensors from reads_
+    for (auto &r : this->reads_) {
+      if (r.binary_sensor) {
+        uint16_t reg = r.reg;
+        uint8_t data[64];
+        uint8_t len = 0;
+        if (this->read_register_once(reg, 1, data, len, 150)) {
+          if (len >= 2) {
+            uint16_t raw = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+            bool state = (raw & r.bitmask) != 0;
+            r.binary_sensor->publish_state(state);
+            ESP_LOGD(TAG, "Initial binary reg=0x%04X raw=0x%04X mask=0x%04X state=%u", reg, raw, r.bitmask, state);
+          }
+        } else {
+          ESP_LOGW(TAG, "Failed to read initial binary reg=0x%04X", reg);
+        }
+        delay(10);
+      }
+      if (r.text_sensor) {
+        uint16_t reg = r.reg;
+        uint8_t data[64];
+        uint8_t len = 0;
+        if (this->read_register_once(reg, 1, data, len, 150)) {
+          if (len >= 2) {
+            uint16_t raw = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%u", raw);
+            r.text_sensor->publish_state(std::string(buf));
+            ESP_LOGD(TAG, "Initial text reg=0x%04X value=%s", reg, buf);
+          }
+        } else {
+          ESP_LOGW(TAG, "Failed to read initial text reg=0x%04X", reg);
+        }
+        delay(10);
+      }
+    }
+  }
 }
 
 void CustomModbus::loop() {
   // Throttle hele loopet: sørg for mindst X ms mellem iterationer der starter nye reads/writes
-  static const uint32_t LOOP_THROTTLE_MS = 1000; // 2 sekunder mellem "aktive" iterationer
+  static const uint32_t LOOP_THROTTLE_MS = 1000; // 1 sekund mellem "aktive" iterationer
   static uint32_t last_loop_ms = 0;
   uint32_t now = millis();
 
@@ -706,5 +854,3 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
-
-
