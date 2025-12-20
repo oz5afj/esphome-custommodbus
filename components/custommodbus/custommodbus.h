@@ -18,6 +18,9 @@ namespace text_sensor { class TextSensor; }
 namespace esphome {
 namespace custommodbus {
 
+// Forward declare CustomModbusNumber (defineret i number.h)
+class CustomModbusNumber;
+
 enum DataType : uint8_t {
   TYPE_UINT16 = 0,
   TYPE_INT16 = 1,
@@ -97,6 +100,10 @@ class CustomModbus : public Component, public uart::UARTDevice {
   uint16_t crc16(uint8_t *buf, uint8_t len);
 
   void build_read_blocks();
+
+  // --- SYNKRON HJÆLPEFUNKTION (deklaration) ---
+  // Bruges i setup() til at læse initiale værdier fra inverteren (blokkerer kort i setup)
+  bool read_register_once(uint16_t reg, uint8_t count, uint8_t *out_data, uint8_t &out_len, uint32_t timeout_ms = 150);
 
   // uart::UARTComponent pointer type (sættes af ESPHome via set_uart_parent)
   uart::UARTComponent *uart_parent_{nullptr};
