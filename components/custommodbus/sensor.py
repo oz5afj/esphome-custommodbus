@@ -8,6 +8,8 @@ CONF_COUNT = "count"
 CONF_DATA_TYPE = "data_type"
 CONF_SCALE = "scale"
 CONF_CUSTOMMODBUS_ID = "custommodbus_id"
+CONF_DECIMALS = "decimals"
+CONF_DELTA = "delta"
 
 custommodbus_ns = cg.esphome_ns.namespace("custommodbus")
 CustomModbus = custommodbus_ns.class_("CustomModbus", cg.Component)
@@ -30,6 +32,8 @@ CONFIG_SCHEMA = sensor.sensor_schema().extend(
             "uint16", "int16", "uint32", "uint32_r", lower=True
         ),
         cv.Optional(CONF_SCALE, default=1.0): cv.float_,
+        cv.Optional(CONF_DECIMALS, default=2): cv.int_,
+        cv.Optional(CONF_DELTA, default=0.05): cv.float_,
     }
 )
 
@@ -44,5 +48,7 @@ async def to_code(config):
         config[CONF_COUNT],
         data_type,
         config[CONF_SCALE],
-        sens
+        sens,
+        config[CONF_DECIMALS],
+        config[CONF_DELTA]
     ))
