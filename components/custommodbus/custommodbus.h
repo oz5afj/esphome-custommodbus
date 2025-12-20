@@ -108,6 +108,9 @@ class CustomModbus : public Component, public uart::UARTDevice {
   std::map<uint16_t, uint16_t> last_written_value_;
   std::map<uint16_t, uint32_t> last_write_time_;
   static const uint32_t WRITE_COOLDOWN_MS = 30000; // 30 seconds
+  // preiss - START: husk sidste publicerede værdi per sensor
+  // Map til at huske sidste publicerede værdi per sensor (for at undgå oversvømmelse)
+  std::map<esphome::sensor::Sensor*, float> last_published_values_;
 
   // --- Asynkrone read‑state medlemmer ---
   enum ReadState { IDLE = 0, WAITING = 1, PROCESSING = 2 };
@@ -137,3 +140,4 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
