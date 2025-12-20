@@ -382,18 +382,14 @@ void CustomModbus::process_reads() {
                   }
                   // preiss - END
 
-                  // Low-word first (U_DWORD_R) — match indbygget value_type: U_DWORD_R
-                  uint32_t lo = (static_cast<uint32_t>(data[0]) << 8) | data[1];
-                  uint32_t hi = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+                  // CORRECTED: Low-word first variant for this device (U_DWORD_R)
+                  // low 16-bit word is in data[2..3], high 16-bit word in data[0..1]
+                  uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+                  uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
                   uint32_t v = (lo << 16) | hi;
-                  // IMPORTANT: to match YAML multiply: let C++ publish raw value (scale = 1.0)
-                  // If you prefer C++ scaling, set it.scale accordingly and multiply by it.scale instead.
+                  // Publish raw 32-bit value; let YAML multiply/filter handle scaling if configured.
                   this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * 1.0f, it.decimals, it.delta_threshold);
                 }
-              } else if (it.type == TYPE_UINT32) {
-                // handled above
-              } else if (it.type == TYPE_UINT32_R) {
-                // handled above
               }
             }
             break;
@@ -553,11 +549,12 @@ void CustomModbus::process_reads() {
                   }
                   // preiss - END
 
-                  // Low-word first (U_DWORD_R) — match indbygget value_type: U_DWORD_R
-                  uint32_t lo = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
-                  uint32_t hi = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+                  // CORRECTED: Low-word first variant for this device (U_DWORD_R)
+                  // low 16-bit word is in ptr[2..3], high 16-bit word in ptr[0..1]
+                  uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+                  uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
                   uint32_t v = (lo << 16) | hi;
-                  // Publish raw 32-bit value; let YAML multiply filter handle scaling if configured.
+                  // Publish raw 32-bit value; let YAML multiply/filter handle scaling if configured.
                   this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * 1.0f, it->decimals, it->delta_threshold);
                 }
               }
