@@ -125,10 +125,24 @@ class CustomModbus : public Component, public uart::UARTDevice {
   // --- EEPROM-safe helpers (NYT) ---
   bool should_write(uint16_t reg, uint16_t value);
   void record_write(uint16_t reg, uint16_t value);
+
+  // preiss - START: indsæt nye medlemmer og prototype for filtreret publicering
+  // Map til at huske sidste publicerede værdi per sensor (for at undgå oversvømmelse)
+  std::map<esphome::sensor::Sensor*, float> last_published_values_;
+  // Tærskel for hvornår vi sender en ændring (1 i 3. decimal = 0.001)
+  float publish_delta_threshold_ = 0.001f;
+  // Hjælpefunktion: afrund og publicer kun hvis ændring > threshold
+  void publish_sensor_filtered(esphome::sensor::Sensor *sensor, float value);
+  // preiss - END
+
+
+
+
 };
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
