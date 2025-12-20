@@ -33,8 +33,15 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
 void CustomModbus::publish_sensor_filtered(esphome::sensor::Sensor *sensor, float value, int decimals, float threshold) {
   if (!sensor) return;
 
-  // Afrund til 'decimals'
-  float factor = std::pow(10.0f, static_cast<float>(decimals));
+  // Hurtig faktor uden dyr pow() kald
+  static const float pow10[] = {1.0f, 10.0f, 100.0f, 1000.0f, 10000.0f, 100000.0f, 1000000.0f};
+  float factor = 1.0f;
+  if (decimals >= 0 && decimals <= 6) {
+    factor = pow10[decimals];
+  } else {
+    factor = std::pow(10.0f, static_cast<float>(decimals)); // fallback hvis usædvanligt decimals
+  }
+
   float rounded = std::round(value * factor) / factor;
 
   // Find sidste publicerede værdi for denne sensor
@@ -355,14 +362,13 @@ void CustomModbus::process_reads() {
                 this->publish_sensor_filtered(it.sensor, value, it.decimals, it.delta_threshold);
               } else if (it.type == TYPE_UINT32) {
                 if (bytecount >= 4) {
-                  // preiss - START: debug print rå bytes (single-read)
-                  {
-                    char dbg[128];
-                    snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
-                             it.reg, data[0], data[1], data[2], data[3]);
-                    ESP_LOGD(TAG, "%s", dbg);
-                  }
-                  // preiss - END
+                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
+                  // {
+                  //   char dbg[128];
+                  //   snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
+                  //            it.reg, data[0], data[1], data[2], data[3]);
+                  //   ESP_LOGD(TAG, "%s", dbg);
+                  // }
 
                   // High-word first (U_DWORD)
                   uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
@@ -373,14 +379,13 @@ void CustomModbus::process_reads() {
                 }
               } else if (it.type == TYPE_UINT32_R) {
                 if (bytecount >= 4) {
-                  // preiss - START: debug print rå bytes (single-read, reversed)
-                  {
-                    char dbg[128];
-                    snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
-                             it.reg, data[0], data[1], data[2], data[3]);
-                    ESP_LOGD(TAG, "%s", dbg);
-                  }
-                  // preiss - END
+                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
+                  // {
+                  //   char dbg[128];
+                  //   snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
+                  //            it.reg, data[0], data[1], data[2], data[3]);
+                  //   ESP_LOGD(TAG, "%s", dbg);
+                  // }
 
                   // CORRECTED: Low-word first variant for this device (U_DWORD_R)
                   // low 16-bit word is in data[2..3], high 16-bit word in data[0..1]
@@ -491,6 +496,10 @@ void CustomModbus::process_reads() {
         if (b.start_reg == read_reg_ && b.count == read_count_) {
 
           for (auto *it : b.items) {
+            // yield kort for at undgå lange blokeringer i meget store blokke
+            static int yield_counter = 0;
+            if ((yield_counter++ & 0x1F) == 0) delay(0);
+
             uint16_t offset = (it->reg - b.start_reg) * 2;
             if (offset + 1 >= bytecount) {
               ESP_LOGW(TAG, "Offset out of range for reg=0x%04X", it->reg);
@@ -521,14 +530,13 @@ void CustomModbus::process_reads() {
                 if (offset + 3 >= bytecount) {
                   ESP_LOGW(TAG, "UINT32 out of range for reg=0x%04X", it->reg);
                 } else {
-                  // preiss - START: debug print rå bytes (grouped-read)
-                  {
-                    char dbg[128];
-                    snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
-                             it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
-                    ESP_LOGD(TAG, "%s", dbg);
-                  }
-                  // preiss - END
+                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
+                  // {
+                  //   char dbg[128];
+                  //   snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
+                  //            it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
+                  //   ESP_LOGD(TAG, "%s", dbg);
+                  // }
 
                   // High-word first (U_DWORD)
                   uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
@@ -540,14 +548,13 @@ void CustomModbus::process_reads() {
                 if (offset + 3 >= bytecount) {
                   ESP_LOGW(TAG, "UINT32_R out of range for reg=0x%04X", it->reg);
                 } else {
-                  // preiss - START: debug print rå bytes (grouped-read, reversed)
-                  {
-                    char dbg[128];
-                    snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
-                             it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
-                    ESP_LOGD(TAG, "%s", dbg);
-                  }
-                  // preiss - END
+                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
+                  // {
+                  //   char dbg[128];
+                  //   snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
+                  //            it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
+                  //   ESP_LOGD(TAG, "%s", dbg);
+                  // }
 
                   // CORRECTED: Low-word first variant for this device (U_DWORD_R)
                   // low 16-bit word is in ptr[2..3], high 16-bit word in ptr[0..1]
@@ -623,7 +630,8 @@ void CustomModbus::process_writes() {
 
     uint32_t start = millis();
     uint8_t got = 0;
-    while (millis() - start < 200) {
+    // Forkortet timeout fra 200 ms til 50 ms for at undgå lange blokeringer
+    while (millis() - start < 50) {
       size_t avail = this->uart_parent_->available();
       if (avail) {
         int to_read = std::min(static_cast<int>(sizeof(resp) - got), static_cast<int>(avail));
