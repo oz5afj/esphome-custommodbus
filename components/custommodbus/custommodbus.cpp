@@ -1,5 +1,6 @@
  #include "custommodbus.h"
 #include "esphome/core/log.h"
+#include <cmath>   // preiss - START: nødvendigt for std::round/std::fabs
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -26,6 +27,35 @@ uint16_t CustomModbus::crc16(uint8_t *buf, uint8_t len) {
   }
   return crc;
 }
+
+// preiss - START: implementering af afrunding + delta-filter
+void CustomModbus::publish_sensor_filtered(esphome::sensor::Sensor *sensor, float value) {
+  if (!sensor) return;
+
+  // Afrund til 3 decimaler
+  float rounded = std::round(value * 1000.0f) / 1000.0f;
+
+  // Find sidste publicerede værdi for denne sensor
+  auto it = this->last_published_values_.find(sensor);
+  if (it == this->last_published_values_.end()) {
+    // Ingen tidligere værdi: publicer og gem
+    sensor->publish_state(rounded);
+    this->last_published_values_[sensor] = rounded;
+    ESP_LOGD(TAG, "Published initial sensor value %.3f", rounded);
+    return;
+  }
+
+  float last = it->second;
+  // Send kun hvis ændring >= threshold
+  if (std::fabs(rounded - last) >= this->publish_delta_threshold_) {
+    sensor->publish_state(rounded);
+    this->last_published_values_[sensor] = rounded;
+    ESP_LOGD(TAG, "Published sensor value changed %.3f -> %.3f", last, rounded);
+  } else {
+    ESP_LOGD(TAG, "Skipped publish (delta %.6f < threshold %.6f)", std::fabs(rounded - last), this->publish_delta_threshold_);
+  }
+}
+
 
 // --- Public API: add/read/write registrations ---
 void CustomModbus::add_read_sensor(uint16_t reg, uint8_t count, DataType type, float scale, esphome::sensor::Sensor *s) {
@@ -339,27 +369,34 @@ void CustomModbus::process_reads() {
               it.text_sensor->publish_state(std::string(buf));
             } else if (it.sensor) {
               // numeric sensor: support types
-              if (it.type == TYPE_UINT16) {
-                uint16_t v = (static_cast<uint16_t>(data[0]) << 8) | data[1];
-                it.sensor->publish_state(static_cast<float>(v) * it.scale);
-              } else if (it.type == TYPE_INT16) {
-                int16_t v = (static_cast<int16_t>(data[0]) << 8) | data[1];
-                it.sensor->publish_state(static_cast<float>(v) * it.scale);
-              } else if (it.type == TYPE_UINT32) {
-                // big-endian: reg0 high word, reg1 low word
-                if (bytecount >= 4) {
-                  uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
-                  uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
-                  uint32_t v = (hi << 16) | lo;
-                  it.sensor->publish_state(static_cast<float>(v) * it.scale);
-                }
+         if (it.type == TYPE_UINT16) {
+  uint16_t v = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+  this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale); // preiss
+} else if (it.type == TYPE_INT16) {
+  int16_t v = (static_cast<int16_t>(data[0]) << 8) | data[1];
+  this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale); // preiss
+} else if (it.type == TYPE_UINT32) {
+  if (bytecount >= 4) {
+    uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
+    uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+    uint32_t v = (hi << 16) | lo;
+    this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale); // preiss
+  }
+} else if (it.type == TYPE_UINT32_R) {
+  if (bytecount >= 4) {
+    uint32_t lo = (static_cast<uint32_t>(data[0]) << 8) | data[1];
+    uint32_t hi = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+    uint32_t v = (lo << 16) | hi;
+    this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale); // preiss
+  }
+}
               } else if (it.type == TYPE_UINT32_R) {
                 // reversed 32-bit: reg0 low word, reg1 high word
                 if (bytecount >= 4) {
                   uint32_t lo = (static_cast<uint32_t>(data[0]) << 8) | data[1];
                   uint32_t hi = (static_cast<uint32_t>(data[2]) << 8) | data[3];
                   uint32_t v = (lo << 16) | hi;
-                  it.sensor->publish_state(static_cast<float>(v) * it.scale);
+                  this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale);
                 }
               }
             }
@@ -488,31 +525,32 @@ void CustomModbus::process_reads() {
               snprintf(buf, sizeof(buf), "%u", v);
               it->text_sensor->publish_state(std::string(buf));
             } else if (it->sensor) {
-              if (it->type == TYPE_UINT16) {
-                uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
-                it->sensor->publish_state(static_cast<float>(v) * it->scale);
-              } else if (it->type == TYPE_INT16) {
-                int16_t v = (static_cast<int16_t>(ptr[0]) << 8) | ptr[1];
-                it->sensor->publish_state(static_cast<float>(v) * it->scale);
-              } else if (it->type == TYPE_UINT32) {
-                if (offset + 3 >= bytecount) {
-                  ESP_LOGW(TAG, "UINT32 out of range for reg=0x%04X", it->reg);
-                } else {
-                  uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
-                  uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
-                  uint32_t v = (hi << 16) | lo;
-                  it->sensor->publish_state(static_cast<float>(v) * it->scale);
-                }
-              } else if (it->type == TYPE_UINT32_R) {
-                if (offset + 3 >= bytecount) {
-                  ESP_LOGW(TAG, "UINT32_R out of range for reg=0x%04X", it->reg);
-                } else {
-                  uint32_t lo = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
-                  uint32_t hi = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
-                  uint32_t v = (lo << 16) | hi;
-                  it->sensor->publish_state(static_cast<float>(v) * it->scale);
-                }
-              }
+      if (it->type == TYPE_UINT16) {
+  uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
+  this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale); // preiss
+} else if (it->type == TYPE_INT16) {
+  int16_t v = (static_cast<int16_t>(ptr[0]) << 8) | ptr[1];
+  this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale); // preiss
+} else if (it->type == TYPE_UINT32) {
+  if (offset + 3 >= bytecount) {
+    ESP_LOGW(TAG, "UINT32 out of range for reg=0x%04X", it->reg);
+  } else {
+    uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
+    uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+    uint32_t v = (hi << 16) | lo;
+    this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale); // preiss
+  }
+} else if (it->type == TYPE_UINT32_R) {
+  if (offset + 3 >= bytecount) {
+    ESP_LOGW(TAG, "UINT32_R out of range for reg=0x%04X", it->reg);
+  } else {
+    uint32_t lo = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
+    uint32_t hi = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+    uint32_t v = (lo << 16) | hi;
+    this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale); // preiss
+  }
+}
+
             }
           }
 
@@ -649,6 +687,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
