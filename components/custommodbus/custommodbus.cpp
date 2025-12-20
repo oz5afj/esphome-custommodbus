@@ -1,6 +1,6 @@
 #include "custommodbus.h"
 #include "esphome/core/log.h"
-#include <cmath>   // preiss - START: nødvendigt for std::round/std::fabs
+#include <cmath>
 #include <cstring>
 
 #include "esphome/components/binary_sensor/binary_sensor.h"
@@ -355,6 +355,15 @@ void CustomModbus::process_reads() {
                 this->publish_sensor_filtered(it.sensor, value, it.decimals, it.delta_threshold);
               } else if (it.type == TYPE_UINT32) {
                 if (bytecount >= 4) {
+                  // preiss - START: debug print rå bytes (single-read)
+                  {
+                    char dbg[128];
+                    snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
+                             it.reg, data[0], data[1], data[2], data[3]);
+                    ESP_LOGD(TAG, "%s", dbg);
+                  }
+                  // preiss - END
+
                   uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
                   uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
                   uint32_t v = (hi << 16) | lo;
@@ -363,12 +372,25 @@ void CustomModbus::process_reads() {
                 }
               } else if (it.type == TYPE_UINT32_R) {
                 if (bytecount >= 4) {
+                  // preiss - START: debug print rå bytes (single-read, reversed)
+                  {
+                    char dbg[128];
+                    snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
+                             it.reg, data[0], data[1], data[2], data[3]);
+                    ESP_LOGD(TAG, "%s", dbg);
+                  }
+                  // preiss - END
+
                   uint32_t lo = (static_cast<uint32_t>(data[0]) << 8) | data[1];
                   uint32_t hi = (static_cast<uint32_t>(data[2]) << 8) | data[3];
                   uint32_t v = (lo << 16) | hi;
                   float value = static_cast<float>(v) * it.scale;
                   this->publish_sensor_filtered(it.sensor, value, it.decimals, it.delta_threshold);
                 }
+              } else if (it.type == TYPE_UINT32) {
+                // handled above
+              } else if (it.type == TYPE_UINT32_R) {
+                // handled above
               }
             }
             break;
@@ -500,21 +522,37 @@ void CustomModbus::process_reads() {
                 if (offset + 3 >= bytecount) {
                   ESP_LOGW(TAG, "UINT32 out of range for reg=0x%04X", it->reg);
                 } else {
+                  // preiss - START: debug print rå bytes (grouped-read)
+                  {
+                    char dbg[128];
+                    snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
+                             it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
+                    ESP_LOGD(TAG, "%s", dbg);
+                  }
+                  // preiss - END
+
                   uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
                   uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                   uint32_t v = (hi << 16) | lo;
-                  float value = static_cast<float>(v) * it->scale;
-                  this->publish_sensor_filtered(it->sensor, value, it->decimals, it->delta_threshold);
+                  this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale, it->decimals, it->delta_threshold);
                 }
               } else if (it->type == TYPE_UINT32_R) {
                 if (offset + 3 >= bytecount) {
                   ESP_LOGW(TAG, "UINT32_R out of range for reg=0x%04X", it->reg);
                 } else {
+                  // preiss - START: debug print rå bytes (grouped-read, reversed)
+                  {
+                    char dbg[128];
+                    snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
+                             it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
+                    ESP_LOGD(TAG, "%s", dbg);
+                  }
+                  // preiss - END
+
                   uint32_t lo = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
                   uint32_t hi = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                   uint32_t v = (lo << 16) | hi;
-                  float value = static_cast<float>(v) * it->scale;
-                  this->publish_sensor_filtered(it->sensor, value, it->decimals, it->delta_threshold);
+                  this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale, it->decimals, it->delta_threshold);
                 }
               }
             }
