@@ -4,6 +4,7 @@
 
 #include "esphome/components/uart/uart.h"
 #include "esphome/components/sensor/sensor.h"
+#include "number.h"               // <-- Tilføjet: support for number platform
 #include <vector>
 #include <algorithm>
 #include <map>   // <-- NYT til EEPROM-safe write tracking
@@ -73,6 +74,10 @@ class CustomModbus : public Component, public uart::UARTDevice {
   void add_binary_sensor(uint16_t reg, uint16_t mask, esphome::binary_sensor::BinarySensor *bs);
   void add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts);
 
+  // --- Number support ---
+  // Kaldet af den genererede ESPHome binding når en number oprettes i YAML
+  void add_number(uint16_t reg, CustomModbusNumber *num);
+
   void write_single(uint16_t reg, uint16_t value);
   void write_bitmask(uint16_t reg, uint16_t mask, bool state);
 
@@ -136,8 +141,10 @@ class CustomModbus : public Component, public uart::UARTDevice {
   // preiss - START: publish helper med per-sensor decimals og threshold
   void publish_sensor_filtered(esphome::sensor::Sensor *sensor, float value, int decimals, float threshold);
   // preiss - END
+
+  // --- Number container (gemmer registrerede numbers) ---
+  std::vector<std::pair<uint16_t, CustomModbusNumber*>> numbers_;
 };
 
 }  // namespace custommodbus
 }  // namespace esphome
-
