@@ -1,35 +1,31 @@
-import esphome.codegen as cg
-import esphome.config_validation as cv
-from esphome.components import number
-from esphome.const import CONF_ID
+#include "number.h"
+#include "custommodbus.h"
+#include "esphome/core/log.h"
 
-from . import custommodbus_ns, CustomModbus
+namespace esphome {
+namespace custommodbus {
 
-CustomModbusNumber = custommodbus_ns.class_("CustomModbusNumber", number.Number)
+static const char *TAG = "custommodbus.number";
 
-CONF_REGISTER = "register"
-CONF_BITMASK = "bitmask"
-CONF_SLAVE_ID = "slave_id"
+void CustomModbusNumber::control(float value) {
+  if (this->parent_ == nullptr) {
+    ESP_LOGW(TAG, "No parent assigned for number component");
+    return;
+  }
 
-CONFIG_SCHEMA = number.NUMBER_SCHEMA.extend(
-    {
-        cv.GenerateID(): cv.declare_id(CustomModbusNumber),
-        cv.Required(CONF_REGISTER): cv.uint16_t,
-        cv.Optional(CONF_BITMASK, default=0): cv.uint16_t,
-        cv.Optional(CONF_SLAVE_ID, default=1): cv.uint8_t,
-        cv.GenerateID("custommodbus_id"): cv.use_id(CustomModbus),
-    }
-)
+  uint16_t raw = static_cast<uint16_t>(value);
 
-async def to_code(config):
-    parent = await cg.get_variable(config["custommodbus_id"])
-    var = cg.new_Pvariable(config[CONF_ID])
+  if (this->bitmask_ != 0) {
+    // Bitmask write (read-modify-write)
+    this->parent_->write_bitmask(this->register_, this->bitmask_, raw != 0);
+  } else {
+    // Normal single register write
+    this->parent_->write_single(this->register_, raw);
+  }
 
-    await number.register_number(var, config)
+  // Update HA immediately
+  this->publish_state(value);
+}
 
-    cg.add(var.set_parent(parent))
-    cg.add(var.set_register(config[CONF_REGISTER]))
-    cg.add(var.set_bitmask(config[CONF_BITMASK]))
-    cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
-
-    cg.add(parent.add_number(config[CONF_REGISTER], var))
+}  // namespace custommodbus
+}  // namespace esphome
