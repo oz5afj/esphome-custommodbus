@@ -5,7 +5,6 @@
 namespace esphome {
 namespace custommodbus {
 
-// Forward declaration for correct include order
 class CustomModbus;
 
 class CustomModbusSwitch : public switch_::Switch {
