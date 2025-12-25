@@ -8,7 +8,6 @@ from esphome.const import (
     CONF_ENTITY_CATEGORY,
     CONF_DEVICE_CLASS,
     CONF_DISABLED_BY_DEFAULT,
-    CONF_RESTORE_MODE,
 )
 
 from . import custommodbus_ns, CustomModbus
@@ -32,14 +31,6 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
-
-        # IMPORTANT:
-        # register_switch() REQUIRES restore_mode to exist.
-        # So we include it as a STRING, but we IGNORE it.
-        cv.Optional(CONF_RESTORE_MODE, default=switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF): switch.restore_mode,
-
-
-        
     }
 )
 
@@ -48,12 +39,14 @@ async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     sw = cg.new_Pvariable(config[CONF_ID])
 
-    # Register switch normally (expects restore_mode to exist)
-    await switch.register_switch(sw, config)
+    # Register switch WITHOUT restore_mode (we remove it from config)
+    filtered = {k: v for k, v in config.items() if k not in ("restore_mode",)}
 
-    # OVERRIDE restore_mode with correct enum
+    await switch.register_switch(sw, filtered)
+
+    # Force correct restore mode (enum, not string)
     cg.add(sw.set_restore_mode(switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF))
-    
+
     cg.add(sw.set_parent(parent))
     cg.add(sw.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(sw.set_register(config[CONF_REGISTER]))
