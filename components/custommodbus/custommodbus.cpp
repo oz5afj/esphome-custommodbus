@@ -461,7 +461,7 @@ void CustomModbus::process_reads() {
       uint8_t count = r.count;
       read_state_ = WAITING;
       read_start_ms_ = millis();
-      read_expected_ = static_cast<uint8_t>(5 + count * 2);
+      read_expected_ = static_cast<uint16_t>(5 + static_cast<uint16_t>(count) * 2);
       read_got_ = 0;
       read_reg_ = reg;
       read_count_ = count;
@@ -614,7 +614,7 @@ void CustomModbus::process_reads() {
 
     read_state_ = WAITING;
     read_start_ms_ = millis();
-    read_expected_ = static_cast<uint8_t>(5 + count * 2);
+    read_expected_ = static_cast<uint16_t>(5 + static_cast<uint16_t>(count) * 2);
     read_got_ = 0;
     read_reg_ = reg;
     read_count_ = count;
@@ -877,6 +877,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
