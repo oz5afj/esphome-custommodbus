@@ -61,6 +61,9 @@ class CustomModbus : public Component, public uart::UARTDevice {
  public:
   CustomModbus() = default;
 
+  // --- Switch support ---
+  void add_switch(uint16_t reg, CustomModbusSwitch *sw);
+
   // Binding fra Python: ESPHome genererer kaldet set_uart_parent
   void set_uart_parent(uart::UARTComponent *parent) { this->uart_parent_ = parent; }
   void set_slave_id(uint8_t id) { this->slave_id_ = id; }
@@ -100,6 +103,9 @@ class CustomModbus : public Component, public uart::UARTDevice {
   uint16_t crc16(uint8_t *buf, uint8_t len);
 
   void build_read_blocks();
+
+  // --- Switch container ---
+  std::vector<std::pair<uint16_t, CustomModbusSwitch*>> switches_;
 
   // --- SYNKRON HJÆLPEFUNKTION (deklaration) ---
   // Bruges i setup() til at læse initiale værdier fra inverteren (blokkerer kort i setup)
@@ -155,4 +161,5 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
