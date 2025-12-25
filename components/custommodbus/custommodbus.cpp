@@ -228,6 +228,9 @@ void CustomModbus::build_read_blocks() {
     return a.reg < b.reg;
   });
 
+  // Maks antal 16-bit registre i én Modbus-blok
+  static const uint16_t MAX_BLOCK_REGS = 60;
+
   ReadBlock current;
   bool first = true;
 
@@ -243,7 +246,11 @@ void CustomModbus::build_read_blocks() {
 
     uint16_t expected_next = current.start_reg + current.count;
 
-    if (it.reg == expected_next) {
+    bool contiguous = (it.reg == expected_next);
+    bool would_exceed =
+        (current.count + it.count > MAX_BLOCK_REGS);  // undgå for store blokke
+
+    if (contiguous && !would_exceed) {
       // extend block
       current.count += it.count;
       current.items.push_back(&it);
@@ -264,8 +271,8 @@ void CustomModbus::build_read_blocks() {
     blocks_.push_back(current);
   }
 
-  ESP_LOGI(TAG, "Grouped %u read items into %u Modbus blocks",
-           (unsigned)reads_.size(), (unsigned)blocks_.size());
+  ESP_LOGI(TAG, "Grouped %u read items into %u Modbus blocks (max %u regs per block)",
+           (unsigned)reads_.size(), (unsigned)blocks_.size(), (unsigned)MAX_BLOCK_REGS);
 }
 
 // --- Lifecycle ---
@@ -854,4 +861,5 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
