@@ -1,6 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import switch
+from esphome.components.switch import SwitchRestoreMode, restore_mode
 from esphome.const import (
     CONF_ID,
     CONF_NAME,
@@ -33,10 +34,11 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
 
-        # IMPORTANT:
-        # ESPHome 2025 requires restore_mode to exist in config.
-        # We accept it as a STRING, but ignore it later.
-        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): cv.string,
+        # VIGTIGT: nu er restore_mode en rigtig enum, ikke en string
+        cv.Optional(
+            CONF_RESTORE_MODE,
+            default=SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF,
+        ): restore_mode,
     }
 )
 
@@ -45,11 +47,8 @@ async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     sw = cg.new_Pvariable(config[CONF_ID])
 
-    # Register switch normally (requires restore_mode to exist)
+    # ESPHome håndterer nu restore_mode korrekt via CONFIG_SCHEMA
     await switch.register_switch(sw, config)
-
-    # OVERRIDE restore_mode with correct enum
-    cg.add(sw.set_restore_mode(switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF))
 
     cg.add(sw.set_parent(parent))
     cg.add(sw.set_slave_id(config[CONF_SLAVE_ID]))
