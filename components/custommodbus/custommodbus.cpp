@@ -7,7 +7,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/sensor/sensor.h"
 #include "number.h" 
-#incudde "switch.h"
+#include "switch.h"
 
 
 namespace esphome {
@@ -175,6 +175,16 @@ void CustomModbus::add_number(uint16_t reg, CustomModbusNumber *num) {
   ESP_LOGI(TAG, "Registered number for reg=0x%04X", reg);
 }
 
+void CustomModbus::add_switch(uint16_t reg, CustomModbusSwitch *sw) {
+  if (!sw) return;
+  sw->set_parent(this);
+  sw->set_register(reg);
+  this->switches_.push_back({reg, sw});
+  ESP_LOGI(TAG, "Registered switch for reg=0x%04X", reg);
+}
+
+
+
 void CustomModbus::add_text_sensor(uint16_t reg, esphome::text_sensor::TextSensor *ts) {
   ReadItem it;
   it.reg = reg;
@@ -318,6 +328,34 @@ void CustomModbus::setup() {
   // Hvis grouped-reads er slået til, bygg blokke
   if (this->use_grouped_reads_) {
     this->build_read_blocks();
+  }
+    // --- Initialiser switches ved opstart ---
+  if (!this->switches_.empty()) {
+    ESP_LOGI(TAG, "Reading initial values for switches");
+    for (auto &p : this->switches_) {
+      uint16_t reg = p.first;
+      CustomModbusSwitch *sw = p.second;
+      if (!sw) continue;
+
+      uint8_t data[64];
+      uint8_t len = 0;
+      if (this->read_register_once(reg, 1, data, len, 150)) {
+        if (len >= 2) {
+          uint16_t raw = (static_cast<uint16_t>(data[0]) << 8) | data[1];
+          bool state;
+          if (sw->get_bitmask() != 0) {
+            state = (raw & sw->get_bitmask()) != 0;
+          } else {
+            state = raw != 0;
+          }
+          sw->publish_state(state);
+          ESP_LOGD(TAG, "Initial switch reg=0x%04X raw=%u state=%u", reg, raw, state);
+        }
+      } else {
+        ESP_LOGW(TAG, "Failed to read initial switch reg=0x%04X", reg);
+      }
+      delay(0);
+    }
   }
 
   // --- Initialiser numbers, binary_sensor og text_sensor ved opstart ---
@@ -890,6 +928,7 @@ void CustomModbus::add_switch(uint16_t reg, CustomModbusSwitch *sw) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
