@@ -6,7 +6,9 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/sensor/sensor.h"
-#include "number.h" // <-- tilføjet for CustomModbusNumber
+#include "number.h" 
+
+
 
 namespace esphome {
 namespace custommodbus {
@@ -875,8 +877,34 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
   last_write_time_[reg] = millis();
 }
 
+
+void CustomModbusNumber::control(float value) {
+  if (!this->parent_) {
+    ESP_LOGW(TAG, "No parent set for number");
+    return;
+  }
+
+  uint16_t raw = static_cast<uint16_t>(value);
+
+  if (this->bitmask_ != 0) {
+    // Bitmask write (0x06 with read-modify-write)
+    this->parent_->write_bitmask(this->register_, this->bitmask_, raw != 0);
+  } else {
+    // Normal single register write
+    this->parent_->write_single(this->register_, raw);
+  }
+
+  // Update HA immediately
+  this->publish_state(value);
+}
+
+
+
+
+
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
