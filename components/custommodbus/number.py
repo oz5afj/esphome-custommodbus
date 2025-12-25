@@ -25,11 +25,14 @@ async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
     var = cg.new_Pvariable(config[CONF_ID])
 
+    # Registrer number-platformen i ESPHome
     await number.register_number(var, config)
 
+    # Bind til C++ objektet
     cg.add(var.set_parent(parent))
     cg.add(var.set_register(config[CONF_REGISTER]))
     cg.add(var.set_bitmask(config[CONF_BITMASK]))
     cg.add(var.set_slave_id(config[CONF_SLAVE_ID]))
 
+    # Registrer i CustomModbus motoren
     cg.add(parent.add_number(config[CONF_REGISTER], var))
