@@ -7,7 +7,7 @@
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/sensor/sensor.h"
 #include "number.h" 
-
+#incudde "switch.h"
 
 
 namespace esphome {
@@ -877,12 +877,20 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
   last_write_time_[reg] = millis();
 }
 
+void CustomModbus::add_switch(uint16_t reg, CustomModbusSwitch *sw) {
+  if (!sw) return;
+  sw->set_parent(this);
+  sw->set_register(reg);
+  this->switches_.push_back({reg, sw});
+  ESP_LOGI(TAG, "Registered switch for reg=0x%04X", reg);
+}
 
 
 
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
