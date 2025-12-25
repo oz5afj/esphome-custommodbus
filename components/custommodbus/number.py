@@ -11,7 +11,7 @@ CONF_REGISTER = "register"
 CONF_BITMASK = "bitmask"
 CONF_SLAVE_ID = "slave_id"
 
-CONFIG_SCHEMA = number.NUMBER_SCHEMA.extend(
+CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(CustomModbusNumber),
         cv.Required(CONF_REGISTER): cv.uint16_t,
@@ -19,7 +19,7 @@ CONFIG_SCHEMA = number.NUMBER_SCHEMA.extend(
         cv.Optional(CONF_SLAVE_ID, default=1): cv.uint8_t,
         cv.GenerateID("custommodbus_id"): cv.use_id(CustomModbus),
     }
-)
+).extend(number.NUMBER_SCHEMA)
 
 async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
