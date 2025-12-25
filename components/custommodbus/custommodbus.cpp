@@ -218,23 +218,25 @@ void CustomModbus::write_bitmask(uint16_t reg, uint16_t mask, bool state) {
   record_write(reg, new_value);
 }
 
-// --- Grouped reads: build blocks from reads_ ---
 void CustomModbus::build_read_blocks() {
   this->blocks_.clear();
   if (reads_.empty()) return;
 
-  // Sort by register
-  std::sort(reads_.begin(), reads_.end(), [](const ReadItem &a, const ReadItem &b) {
-    return a.reg < b.reg;
-  });
+  // Sortér alle reads efter registeradresse
+  std::sort(reads_.begin(), reads_.end(),
+            [](const ReadItem &a, const ReadItem &b) {
+              return a.reg < b.reg;
+            });
 
   // Maks antal 16-bit registre i én Modbus-blok
-  static const uint16_t MAX_BLOCK_REGS = 60;
+  static const uint16_t MAX_BLOCK_REGS = 40;
 
   ReadBlock current;
   bool first = true;
 
   for (auto &it : this->reads_) {
+
+    // Første element starter altid en ny blok
     if (first) {
       current.start_reg = it.reg;
       current.count = it.count;
@@ -245,20 +247,30 @@ void CustomModbus::build_read_blocks() {
     }
 
     uint16_t expected_next = current.start_reg + current.count;
-
     bool contiguous = (it.reg == expected_next);
-    bool would_exceed =
-        (current.count + it.count > MAX_BLOCK_REGS);  // undgå for store blokke
+
+    // --- NYT: split blok ved 32-bit registre (count=2) ---
+    // Dette sikrer korrekt alignment og forhindrer memory-korruption
+    if (it.count == 2) {
+      blocks_.push_back(current);
+      current.start_reg = it.reg;
+      current.count = it.count;
+      current.items.clear();
+      current.items.push_back(&it);
+      continue;
+    }
+
+    // --- NYT: split blok hvis den bliver for stor ---
+    bool would_exceed = (current.count + it.count > MAX_BLOCK_REGS);
 
     if (contiguous && !would_exceed) {
-      // extend block
+      // Udvid eksisterende blok
       current.count += it.count;
       current.items.push_back(&it);
     } else {
-      // save block
+      // Gem blok og start en ny
       blocks_.push_back(current);
 
-      // start new block
       current.start_reg = it.reg;
       current.count = it.count;
       current.items.clear();
@@ -266,14 +278,18 @@ void CustomModbus::build_read_blocks() {
     }
   }
 
-  // save last block
+  // Gem sidste blok
   if (!first) {
     blocks_.push_back(current);
   }
 
-  ESP_LOGI(TAG, "Grouped %u read items into %u Modbus blocks (max %u regs per block)",
-           (unsigned)reads_.size(), (unsigned)blocks_.size(), (unsigned)MAX_BLOCK_REGS);
+  ESP_LOGI(TAG,
+           "Grouped %u read items into %u Modbus blocks (max %u regs per block)",
+           (unsigned)reads_.size(),
+           (unsigned)blocks_.size(),
+           (unsigned)MAX_BLOCK_REGS);
 }
+
 
 // --- Lifecycle ---
 void CustomModbus::setup() {
@@ -861,5 +877,6 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
