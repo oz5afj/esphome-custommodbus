@@ -36,7 +36,10 @@ CONFIG_SCHEMA = cv.Schema(
         # IMPORTANT:
         # register_switch() REQUIRES restore_mode to exist.
         # So we include it as a STRING, but we IGNORE it.
-        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): cv.string,
+        cv.Optional(CONF_RESTORE_MODE, default=switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF): switch.restore_mode,
+
+
+        
     }
 )
 
@@ -50,7 +53,7 @@ async def to_code(config):
 
     # OVERRIDE restore_mode with correct enum
     cg.add(sw.set_restore_mode(switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF))
-
+    
     cg.add(sw.set_parent(parent))
     cg.add(sw.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(sw.set_register(config[CONF_REGISTER]))
