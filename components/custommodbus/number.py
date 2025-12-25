@@ -19,7 +19,7 @@ CONF_REGISTER = "register"
 CONF_BITMASK = "bitmask"
 CONF_SLAVE_ID = "slave_id"
 
-CONFIG_SCHEMA = number.NUMBER_SCHEMA.extend(
+CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(CustomModbusNumber),
         cv.Required("custommodbus_id"): cv.use_id(CustomModbus),
