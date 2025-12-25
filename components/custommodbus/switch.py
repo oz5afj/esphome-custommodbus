@@ -8,18 +8,29 @@ from esphome.const import (
     CONF_ENTITY_CATEGORY,
     CONF_DEVICE_CLASS,
     CONF_DISABLED_BY_DEFAULT,
+    CONF_RESTORE_MODE,
 )
 
 from . import custommodbus_ns, CustomModbus
 
-# C++ klasse der arver fra esphome::switch_::Switch
 CustomModbusSwitch = custommodbus_ns.class_("CustomModbusSwitch", switch.Switch)
 
 CONF_REGISTER = "register"
 CONF_BITMASK = "bitmask"
 CONF_SLAVE_ID = "slave_id"
 
-# Selvstændigt schema — undgår afhængighed af switch.SWITCH_SCHEMA
+# Hvis esphome.components.switch eksponerer RestoreMode enum, brug den her.
+# Dette sikrer at register_switch får en korrekt enum, ikke en streng.
+try:
+    RESTORE_MODE_SCHEMA = cv.Optional(CONF_RESTORE_MODE, default=switch.RestoreMode.RESTORE_DEFAULT_OFF)
+    RESTORE_MODE_VALIDATOR = cv.enum(switch.RestoreMode)
+except Exception:
+    # Fallback: hvis RestoreMode ikke findes i denne esphome‑version,
+    # accepter en streng (midlertidigt) for at undgå KeyError.
+    # Bemærk: fallback kan medføre C++ compile issues hvis enum mangler.
+    RESTORE_MODE_SCHEMA = cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF")
+    RESTORE_MODE_VALIDATOR = cv.string
+
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(CustomModbusSwitch),
@@ -34,27 +45,24 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
+
+        # Tilføj restore_mode så register_switch ikke fejler med KeyError
+        RESTORE_MODE_SCHEMA: RESTORE_MODE_VALIDATOR,
     }
 )
 
 
 async def to_code(config):
-    # Hent parent (CustomModbus C++ objekt)
     parent = await cg.get_variable(config["custommodbus_id"])
 
-    # Opret Python/C++ wrapper for switch entiteten
     sw = cg.new_Pvariable(config[CONF_ID])
 
-    # Registrer switch hos ESPHome (ESPHome håndterer standardfelter internt)
+    # register_switch forventer at config indeholder CONF_RESTORE_MODE
     await switch.register_switch(sw, config)
 
-    # Bind til din C++ parent
     cg.add(sw.set_parent(parent))
     cg.add(sw.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(sw.set_register(config[CONF_REGISTER]))
     cg.add(sw.set_bitmask(config[CONF_BITMASK]))
 
-    # Registrer entiteten i din CustomModbus motor
-    # Forudsætter at din C++ CustomModbus klasse implementerer:
-    #   void add_switch(uint16_t reg, CustomModbusSwitch *sw);
     cg.add(parent.add_switch(config[CONF_REGISTER], sw))
