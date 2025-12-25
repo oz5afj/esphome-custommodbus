@@ -15,6 +15,7 @@ void CustomModbusNumber::control(float value) {
 
   publish_state(value);
 }
+REGISTER_NUMBER(CustomModbusNumber, custommodbus, "custommodbus");
 
 }  // namespace custommodbus
 }  // namespace esphome
