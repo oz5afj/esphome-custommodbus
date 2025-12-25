@@ -8,6 +8,7 @@ from esphome.const import (
     CONF_ENTITY_CATEGORY,
     CONF_DEVICE_CLASS,
     CONF_DISABLED_BY_DEFAULT,
+    CONF_RESTORE_MODE,
 )
 
 from . import custommodbus_ns, CustomModbus
@@ -31,6 +32,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
+
+        # ⭐ This fixes your error
+        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): switch.restore_mode,
     }
 )
 
@@ -39,14 +43,11 @@ async def to_code(config):
 
     sw = cg.new_Pvariable(config[CONF_ID])
 
-    # Registrer switch-platformen i ESPHome
     await switch.register_switch(sw, config)
 
-    # Bind til C++ objektet
     cg.add(sw.set_parent(parent))
     cg.add(sw.set_slave_id(config[CONF_SLAVE_ID]))
     cg.add(sw.set_register(config[CONF_REGISTER]))
     cg.add(sw.set_bitmask(config[CONF_BITMASK]))
 
-    # Registrer i CustomModbus-motoren
     cg.add(parent.add_switch(config[CONF_REGISTER], sw))
