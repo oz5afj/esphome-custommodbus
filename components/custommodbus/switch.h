@@ -14,9 +14,12 @@ class CustomModbusSwitch : public switch_::Switch {
   void set_bitmask(uint16_t mask) { bitmask_ = mask; }
   void set_slave_id(uint8_t id) { slave_id_ = id; }
 
- protected:
+  uint16_t get_bitmask() const { return bitmask_; }
+  uint8_t get_slave_id() const { return slave_id_; }
+
   void write_state(bool state) override;
 
+ protected:
   CustomModbus *parent_{nullptr};
   uint16_t register_{0};
   uint16_t bitmask_{0};
