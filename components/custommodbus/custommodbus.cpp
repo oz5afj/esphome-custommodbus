@@ -404,7 +404,7 @@ void CustomModbus::setup() {
 
 void CustomModbus::loop() {
   // Throttle hele loopet: sørg for mindst X ms mellem iterationer der starter nye reads/writes
-  static const uint32_t LOOP_THROTTLE_MS = 2000; // 2 sekund mellem "aktive" iterationer
+  static const uint32_t LOOP_THROTTLE_MS = 250; // 2 sekund mellem "aktive" iterationer
   static uint32_t last_loop_ms = 0;
   uint32_t now = millis();
 
@@ -877,6 +877,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
