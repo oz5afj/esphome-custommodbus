@@ -8,7 +8,6 @@ from esphome.const import (
     CONF_ENTITY_CATEGORY,
     CONF_DEVICE_CLASS,
     CONF_DISABLED_BY_DEFAULT,
-    CONF_RESTORE_MODE,
 )
 
 from . import custommodbus_ns, CustomModbus
@@ -19,31 +18,20 @@ CONF_REGISTER = "register"
 CONF_BITMASK = "bitmask"
 CONF_SLAVE_ID = "slave_id"
 
-CONFIG_SCHEMA = cv.Schema(
+CONFIG_SCHEMA = switch.SWITCH_SCHEMA.extend(
     {
         cv.GenerateID(): cv.declare_id(CustomModbusSwitch),
         cv.Required("custommodbus_id"): cv.use_id(CustomModbus),
         cv.Required(CONF_SLAVE_ID): cv.int_range(min=1, max=247),
         cv.Required(CONF_REGISTER): cv.hex_uint16_t,
         cv.Optional(CONF_BITMASK, default=0): cv.hex_uint16_t,
-
-        cv.Optional(CONF_NAME): cv.string,
-        cv.Optional(CONF_ICON): cv.icon,
-        cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
-        cv.Optional(CONF_DEVICE_CLASS): cv.string,
-        cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
-
-        # ⭐ Accept restore_mode as a raw string — no validation
-        cv.Optional(CONF_RESTORE_MODE): cv.string,
     }
 )
 
 async def to_code(config):
     parent = await cg.get_variable(config["custommodbus_id"])
-
     sw = cg.new_Pvariable(config[CONF_ID])
 
-    # ESPHome handles restore_mode internally — we just pass config through
     await switch.register_switch(sw, config)
 
     cg.add(sw.set_parent(parent))
