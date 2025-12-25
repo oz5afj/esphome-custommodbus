@@ -1,4 +1,4 @@
-##include "switch.h"
+#include "switch.h"
 #include "custommodbus.h"
 #include "esphome/core/log.h"
 #include "esphome/core/component.h"
