@@ -33,8 +33,8 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
 
-        # ⭐ This fixes your error
-        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): switch.restore_mode,
+        # ⭐ Accept restore_mode as a raw string — no validation
+        cv.Optional(CONF_RESTORE_MODE): cv.string,
     }
 )
 
@@ -43,6 +43,7 @@ async def to_code(config):
 
     sw = cg.new_Pvariable(config[CONF_ID])
 
+    # ESPHome handles restore_mode internally — we just pass config through
     await switch.register_switch(sw, config)
 
     cg.add(sw.set_parent(parent))
