@@ -36,7 +36,7 @@ CONFIG_SCHEMA = cv.Schema(
         # IMPORTANT:
         # register_switch() REQUIRES restore_mode to exist.
         # So we include it as a STRING, but we IGNORE it.
-        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): cv.string,
+#        cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF"): cv.string,
     }
 )
 
