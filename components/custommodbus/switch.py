@@ -46,9 +46,8 @@ async def to_code(config):
     # Register switch normally
     await switch.register_switch(sw, config)
 
-    # FORCE restore_mode to enum (fixes all compile errors)
+    # FORCE correct enum (fixes compile error)
     cg.add(sw.set_restore_mode(switch.SwitchRestoreMode.SWITCH_RESTORE_DEFAULT_OFF))
-
 
     cg.add(sw.set_parent(parent))
     cg.add(sw.set_slave_id(config[CONF_SLAVE_ID]))
