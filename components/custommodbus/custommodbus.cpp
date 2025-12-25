@@ -304,7 +304,7 @@ void CustomModbus::setup() {
   // Initialize state machine
   read_state_ = IDLE;
   read_start_ms_ = 0;
-  read_timeout_ms_ = 1000;
+  read_timeout_ms_ = 300;   // tidliger 1000
   read_expected_ = 0;
   read_got_ = 0;
   read_reg_ = 0;
@@ -360,7 +360,7 @@ void CustomModbus::setup() {
       } else {
         ESP_LOGW(TAG, "Failed to read initial number reg=0x%04X", reg);
       }
-      delay(20);
+      delay(0);
     }
 
     // 2) Binary sensors and text sensors from reads_
@@ -379,7 +379,7 @@ void CustomModbus::setup() {
         } else {
           ESP_LOGW(TAG, "Failed to read initial binary reg=0x%04X", reg);
         }
-        delay(10);
+        delay(0);
       }
       if (r.text_sensor) {
         uint16_t reg = r.reg;
@@ -679,7 +679,7 @@ void CustomModbus::process_reads() {
           for (auto *it : b.items) {
             // yield kort for at undgå lange blokeringer i meget store blokke
             static int yield_counter = 0;
-            if ((yield_counter++ & 0x1F) == 0) delay(0);
+            if ((yield_counter++ & 0x07) == 0) delay(0); // før 0x1F
 
             uint16_t offset = (it->reg - b.start_reg) * 2;
             if (offset + 1 >= bytecount) {
@@ -877,6 +877,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
