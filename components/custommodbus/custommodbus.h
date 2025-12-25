@@ -20,6 +20,7 @@ namespace custommodbus {
 
 // Forward declare CustomModbusNumber (defineret i number.h)
 class CustomModbusNumber;
+class CustomModbusSwitch; 
 
 enum DataType : uint8_t {
   TYPE_UINT16 = 0,
@@ -161,5 +162,6 @@ class CustomModbus : public Component, public uart::UARTDevice {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
