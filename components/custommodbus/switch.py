@@ -19,18 +19,7 @@ CONF_REGISTER = "register"
 CONF_BITMASK = "bitmask"
 CONF_SLAVE_ID = "slave_id"
 
-# Hvis esphome.components.switch eksponerer RestoreMode enum, brug den her.
-# Dette sikrer at register_switch får en korrekt enum, ikke en streng.
-try:
-    RESTORE_MODE_SCHEMA = cv.Optional(CONF_RESTORE_MODE, default=switch.RestoreMode.RESTORE_DEFAULT_OFF)
-    RESTORE_MODE_VALIDATOR = cv.enum(switch.RestoreMode)
-except Exception:
-    # Fallback: hvis RestoreMode ikke findes i denne esphome‑version,
-    # accepter en streng (midlertidigt) for at undgå KeyError.
-    # Bemærk: fallback kan medføre C++ compile issues hvis enum mangler.
-    RESTORE_MODE_SCHEMA = cv.Optional(CONF_RESTORE_MODE, default="RESTORE_DEFAULT_OFF")
-    RESTORE_MODE_VALIDATOR = cv.string
-
+# Validate restore_mode as the switch.RestoreMode enum so register_switch gets an enum, not a string.
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(CustomModbusSwitch),
@@ -39,15 +28,17 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_REGISTER): cv.hex_uint16_t,
         cv.Optional(CONF_BITMASK, default=0): cv.hex_uint16_t,
 
-        # Almindelige, valgfrie switch‑felter
+        # Standard optional fields
         cv.Optional(CONF_NAME): cv.string,
         cv.Optional(CONF_ICON): cv.icon,
         cv.Optional(CONF_ENTITY_CATEGORY): cv.string,
         cv.Optional(CONF_DEVICE_CLASS): cv.string,
         cv.Optional(CONF_DISABLED_BY_DEFAULT, default=False): cv.boolean,
 
-        # Tilføj restore_mode så register_switch ikke fejler med KeyError
-        RESTORE_MODE_SCHEMA: RESTORE_MODE_VALIDATOR,
+        # Ensure restore_mode is the enum object, not a string
+        cv.Optional(CONF_RESTORE_MODE, default=switch.RestoreMode.RESTORE_DEFAULT_OFF): cv.enum(
+            switch.RestoreMode
+        ),
     }
 )
 
@@ -57,7 +48,7 @@ async def to_code(config):
 
     sw = cg.new_Pvariable(config[CONF_ID])
 
-    # register_switch forventer at config indeholder CONF_RESTORE_MODE
+    # register_switch expects config[CONF_RESTORE_MODE] to be an enum value
     await switch.register_switch(sw, config)
 
     cg.add(sw.set_parent(parent))
@@ -65,4 +56,5 @@ async def to_code(config):
     cg.add(sw.set_register(config[CONF_REGISTER]))
     cg.add(sw.set_bitmask(config[CONF_BITMASK]))
 
+    # This requires that CustomModbus C++ class implements add_switch(uint16_t, CustomModbusSwitch*)
     cg.add(parent.add_switch(config[CONF_REGISTER], sw))
