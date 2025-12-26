@@ -441,7 +441,7 @@ void CustomModbus::setup() {
     }
   }
 }
-
+// --- Internal: send a Modbus read request (function 0x03) ---
 void CustomModbus::loop() {
   // Throttle hele loopet: sørg for mindst X ms mellem iterationer der starter nye reads/writes
   static const uint32_t LOOP_THROTTLE_MS = 250; // 2 sekund mellem "aktive" iterationer
@@ -458,7 +458,7 @@ void CustomModbus::loop() {
 }
 
 
-// --- Internal: send a Modbus read request (function 0x03) ---
+
 // --- Internal: process reads state machine ---
 void CustomModbus::process_reads() {
   if (!this->uart_parent_) return;
@@ -916,6 +916,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
