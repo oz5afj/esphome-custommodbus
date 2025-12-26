@@ -581,18 +581,25 @@ void CustomModbus::process_reads() {
                 float value = static_cast<float>(v) * it.scale;
                 this->publish_sensor_filtered(it.sensor, value, it.decimals, it.delta_threshold);
               } else if (it.type == TYPE_UINT32) {
-                if (bytecount >= 4) {
-                  uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
-                  uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
-                  uint32_t v = (hi << 16) | lo;
-                  this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale, it.decimals, it.delta_threshold);
+                if (bytecount < 4) {
+                  ESP_LOGW(TAG, "UINT32 out of range reg=0x%04X bytecount=%u", it.reg, bytecount);
+                  break;
+                 }
+                uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
+                uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+                uint32_t v = (hi << 16) | lo;
+                this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale, it.decimals, it.delta_threshold);
                 }
               } else if (it.type == TYPE_UINT32_R) {
-                if (bytecount >= 4) {
-                  uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
-                  uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
-                  uint32_t v = (lo << 16) | hi;
-                  this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * 1.0f, it.decimals, it.delta_threshold);
+                if (bytecount < 4) {
+               ESP_LOGW(TAG, "UINT32_R out of range reg=0x%04X bytecount=%u", it.reg, bytecount);
+               break;
+              }
+             uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
+             uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
+             uint32_t v = (lo << 16) | hi;
+             this->publish_sensor_filtered(it.sensor, static_cast<float>(v), it.decimals, it.delta_threshold);
+
                 }
               }
             }
@@ -620,7 +627,7 @@ void CustomModbus::process_reads() {
     return;
   }
 
-  // MODE 2: grouped-reads
+    // MODE 2: grouped-reads
   if (read_state_ == IDLE) {
     if (this->blocks_.empty()) return;
 
@@ -689,7 +696,7 @@ void CustomModbus::process_reads() {
       uint8_t bytecount = read_buf_[2];
       const uint8_t *data = &read_buf_[3];
 
-      // Sikkerhed: bytecount skal matche antal registre * 2
+      // Global sanity check
       if (bytecount < read_count_ * 2) {
         ESP_LOGW(TAG, "Bytecount (%u) < expected (%u) for block start_reg=0x%04X count=%u",
                  bytecount, read_count_ * 2, read_reg_, read_count_);
@@ -707,10 +714,7 @@ void CustomModbus::process_reads() {
             static int yield_counter = 0;
             if ((yield_counter++ & 0x07) == 0) delay(0);
 
-            // Offset i bytes fra block-start
             uint16_t offset = static_cast<uint16_t>((it->reg - b.start_reg) * 2);
-
-            // Hvor mange bytes har vi brug for til denne type?
             uint16_t needed = (it->count == 2) ? 4 : 2;
 
             if (offset + needed > bytecount) {
@@ -726,32 +730,36 @@ void CustomModbus::process_reads() {
               uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
               bool state = (v & it->bitmask) != 0;
               it->binary_sensor->publish_state(state);
+
             } else if (it->text_sensor) {
               uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
               char buf[16];
               snprintf(buf, sizeof(buf), "%u", v);
               it->text_sensor->publish_state(std::string(buf));
+
             } else if (it->sensor) {
+
               if (it->type == TYPE_UINT16) {
                 uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
                 float value = static_cast<float>(v) * it->scale;
                 this->publish_sensor_filtered(it->sensor, value, it->decimals, it->delta_threshold);
+
               } else if (it->type == TYPE_INT16) {
                 int16_t v = (static_cast<int16_t>(ptr[0]) << 8) | ptr[1];
                 float value = static_cast<float>(v) * it->scale;
                 this->publish_sensor_filtered(it->sensor, value, it->decimals, it->delta_threshold);
+
               } else if (it->type == TYPE_UINT32) {
-                // U_DWORD: high word først
                 uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
                 uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                 uint32_t v = (hi << 16) | lo;
                 this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale, it->decimals, it->delta_threshold);
+
               } else if (it->type == TYPE_UINT32_R) {
-                // U_DWORD_R: low word i ptr[2..3], high word i ptr[0..1]
                 uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
                 uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
                 uint32_t v = (lo << 16) | hi;
-                this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * 1.0f, it->decimals, it->delta_threshold);
+                this->publish_sensor_filtered(it->sensor, static_cast<float>(v), it->decimals, it->delta_threshold);
               }
             }
           }
@@ -762,7 +770,8 @@ void CustomModbus::process_reads() {
       }
 
       if (!matched) {
-        ESP_LOGW(TAG, "Received response for reg=0x%04X count=%u but no matching block", read_reg_, read_count_);
+        ESP_LOGW(TAG, "Received response for reg=0x%04X count=%u but no matching block",
+                 read_reg_, read_count_);
       }
 
       read_state_ = IDLE;
@@ -777,7 +786,6 @@ void CustomModbus::process_reads() {
       return;
     }
   }
-}
 
 // --- Internal: process pending writes (simple implementation) ---
 void CustomModbus::process_writes() {
@@ -889,6 +897,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
