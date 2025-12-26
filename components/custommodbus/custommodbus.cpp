@@ -125,7 +125,10 @@ void CustomModbus::publish_sensor_filtered(esphome::sensor::Sensor *sensor, floa
   if (std::fabs(rounded - last) >= threshold) {
     sensor->publish_state(rounded);
     this->last_published_values_[sensor] = rounded;
-    ESP_LOGD(TAG, "Published sensor value changed %.*f -> %.*f", decimals, last, rounded);
+    ESP_LOGD(TAG, "Published sensor value changed %.*f -> %.*f",
+         decimals, last,
+         decimals, rounded);
+
   } else {
     ESP_LOGD(TAG, "Skipped publish (delta %.6f < threshold %.6f)", std::fabs(rounded - last), threshold);
   }
@@ -916,6 +919,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
