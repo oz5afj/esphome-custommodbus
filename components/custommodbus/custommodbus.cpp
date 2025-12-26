@@ -488,7 +488,7 @@ bool CustomModbus::read_registers(uint16_t reg, uint8_t count, uint8_t *resp, ui
 void CustomModbus::process_reads() {
   if (!this->uart_parent_) return;
 
-  // MODE 1: enkelt-read
+  // MODE 1: single-read
   if (!this->use_grouped_reads_) {
 
     if (read_state_ == IDLE) {
@@ -572,7 +572,6 @@ void CustomModbus::process_reads() {
               snprintf(buf, sizeof(buf), "%u", val);
               it.text_sensor->publish_state(std::string(buf));
             } else if (it.sensor) {
-              // numeric sensor: support types (brug per-sensor decimals og delta_threshold)
               if (it.type == TYPE_UINT16) {
                 uint16_t v = (static_cast<uint16_t>(data[0]) << 8) | data[1];
                 float value = static_cast<float>(v) * it.scale;
@@ -583,37 +582,16 @@ void CustomModbus::process_reads() {
                 this->publish_sensor_filtered(it.sensor, value, it.decimals, it.delta_threshold);
               } else if (it.type == TYPE_UINT32) {
                 if (bytecount >= 4) {
-                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
-                  // {
-                  //   char dbg[128];
-                  //   snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
-                  //            it.reg, data[0], data[1], data[2], data[3]);
-                  //   ESP_LOGD(TAG, "%s", dbg);
-                  // }
-
-                  // High-word first (U_DWORD)
                   uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
                   uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
                   uint32_t v = (hi << 16) | lo;
-                  // For TYPE_UINT32 we keep using it.scale (if configured)
                   this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * it.scale, it.decimals, it.delta_threshold);
                 }
               } else if (it.type == TYPE_UINT32_R) {
                 if (bytecount >= 4) {
-                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
-                  // {
-                  //   char dbg[128];
-                  //   snprintf(dbg, sizeof(dbg), "DBG single reg=0x%04X bytes=%02X %02X %02X %02X",
-                  //            it.reg, data[0], data[1], data[2], data[3]);
-                  //   ESP_LOGD(TAG, "%s", dbg);
-                  // }
-
-                  // CORRECTED: Low-word first variant for this device (U_DWORD_R)
-                  // low 16-bit word is in data[2..3], high 16-bit word in data[0..1]
                   uint32_t lo = (static_cast<uint32_t>(data[2]) << 8) | data[3];
                   uint32_t hi = (static_cast<uint32_t>(data[0]) << 8) | data[1];
                   uint32_t v = (lo << 16) | hi;
-                  // Publish raw 32-bit value; let YAML multiply/filter handle scaling if configured.
                   this->publish_sensor_filtered(it.sensor, static_cast<float>(v) * 1.0f, it.decimals, it.delta_threshold);
                 }
               }
@@ -711,21 +689,37 @@ void CustomModbus::process_reads() {
       uint8_t bytecount = read_buf_[2];
       const uint8_t *data = &read_buf_[3];
 
+      // Sikkerhed: bytecount skal matche antal registre * 2
+      if (bytecount < read_count_ * 2) {
+        ESP_LOGW(TAG, "Bytecount (%u) < expected (%u) for block start_reg=0x%04X count=%u",
+                 bytecount, read_count_ * 2, read_reg_, read_count_);
+        read_state_ = IDLE;
+        read_got_ = 0;
+        return;
+      }
+
       bool matched = false;
 
       for (auto &b : this->blocks_) {
         if (b.start_reg == read_reg_ && b.count == read_count_) {
 
           for (auto *it : b.items) {
-            // yield kort for at undgå lange blokeringer i meget store blokke
             static int yield_counter = 0;
-            if ((yield_counter++ & 0x07) == 0) delay(0); // før 0x1F
+            if ((yield_counter++ & 0x07) == 0) delay(0);
 
-            uint16_t offset = (it->reg - b.start_reg) * 2;
-            if (offset + 1 >= bytecount) {
-              ESP_LOGW(TAG, "Offset out of range for reg=0x%04X", it->reg);
+            // Offset i bytes fra block-start
+            uint16_t offset = static_cast<uint16_t>((it->reg - b.start_reg) * 2);
+
+            // Hvor mange bytes har vi brug for til denne type?
+            uint16_t needed = (it->count == 2) ? 4 : 2;
+
+            if (offset + needed > bytecount) {
+              ESP_LOGW(TAG,
+                       "Out of range in grouped read: reg=0x%04X start=0x%04X offset=%u needed=%u bytecount=%u",
+                       it->reg, b.start_reg, offset, needed, bytecount);
               continue;
             }
+
             const uint8_t *ptr = data + offset;
 
             if (it->binary_sensor) {
@@ -738,7 +732,6 @@ void CustomModbus::process_reads() {
               snprintf(buf, sizeof(buf), "%u", v);
               it->text_sensor->publish_state(std::string(buf));
             } else if (it->sensor) {
-              // grouped numeric handling with per-sensor decimals/threshold
               if (it->type == TYPE_UINT16) {
                 uint16_t v = (static_cast<uint16_t>(ptr[0]) << 8) | ptr[1];
                 float value = static_cast<float>(v) * it->scale;
@@ -748,43 +741,17 @@ void CustomModbus::process_reads() {
                 float value = static_cast<float>(v) * it->scale;
                 this->publish_sensor_filtered(it->sensor, value, it->decimals, it->delta_threshold);
               } else if (it->type == TYPE_UINT32) {
-                if (offset + 3 >= bytecount) {
-                  ESP_LOGW(TAG, "UINT32 out of range for reg=0x%04X", it->reg);
-                } else {
-                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
-                  // {
-                  //   char dbg[128];
-                  //   snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
-                  //            it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
-                  //   ESP_LOGD(TAG, "%s", dbg);
-                  // }
-
-                  // High-word first (U_DWORD)
-                  uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
-                  uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
-                  uint32_t v = (hi << 16) | lo;
-                  this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale, it->decimals, it->delta_threshold);
-                }
+                // U_DWORD: high word først
+                uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
+                uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+                uint32_t v = (hi << 16) | lo;
+                this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * it->scale, it->decimals, it->delta_threshold);
               } else if (it->type == TYPE_UINT32_R) {
-                if (offset + 3 >= bytecount) {
-                  ESP_LOGW(TAG, "UINT32_R out of range for reg=0x%04X", it->reg);
-                } else {
-                  // Debug: kommenteret tung snprintf/ESP_LOGD for at reducere CPU
-                  // {
-                  //   char dbg[128];
-                  //   snprintf(dbg, sizeof(dbg), "DBG grouped reg=0x%04X offset=%u bytes=%02X %02X %02X %02X",
-                  //            it->reg, offset/2, ptr[0], ptr[1], ptr[2], ptr[3]);
-                  //   ESP_LOGD(TAG, "%s", dbg);
-                  // }
-
-                  // CORRECTED: Low-word first variant for this device (U_DWORD_R)
-                  // low 16-bit word is in ptr[2..3], high 16-bit word in ptr[0..1]
-                  uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
-                  uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
-                  uint32_t v = (lo << 16) | hi;
-                  // Publish raw 32-bit value; let YAML multiply/filter handle scaling if configured.
-                  this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * 1.0f, it->decimals, it->delta_threshold);
-                }
+                // U_DWORD_R: low word i ptr[2..3], high word i ptr[0..1]
+                uint32_t lo = (static_cast<uint32_t>(ptr[2]) << 8) | ptr[3];
+                uint32_t hi = (static_cast<uint32_t>(ptr[0]) << 8) | ptr[1];
+                uint32_t v = (lo << 16) | hi;
+                this->publish_sensor_filtered(it->sensor, static_cast<float>(v) * 1.0f, it->decimals, it->delta_threshold);
               }
             }
           }
@@ -922,6 +889,7 @@ void CustomModbus::record_write(uint16_t reg, uint16_t value) {
 
 }  // namespace custommodbus
 }  // namespace esphome
+
 
 
 
